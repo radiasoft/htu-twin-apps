@@ -4,6 +4,16 @@ A small local web app for HTU scan folders: pick a scan, collect the scalars you
 them shot by shot, with each device's image or spectrum for that shot, and a schematic of the
 beamline that marks what the scan changed and saved.
 
+![Scan025, an EMQ1 current scan on the magnetic spectrometer: EMQ1 marked as scanned on the beamline, the scan parameter charted per shot, and the spectrometer cameras and spectra for shot 1](screenshots/scan025-emq1-scan.png)
+
+*Scan025, an EMQ1 scan on the magnetic spectrometer: EMQ1 is marked as scanned, and the shot
+panel shows the spectrometer images and spectra for the shot on view.*
+
+![Scan014, a background noscan: laser-chain cameras, the ICT and the spectrometer cameras marked as saved on the beamline, and the laser amplifier images for shot 1](screenshots/scan014-background.png)
+
+*Scan014, a background noscan: the beamline marks the laser-chain cameras, the ICT and the
+spectrometer cameras as saved, and the shot panel shows the amplifier images.*
+
 ## Run
 
 Install the repository (see the [top-level README](../../README.md)), then:
