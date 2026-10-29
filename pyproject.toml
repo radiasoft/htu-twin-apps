@@ -1,0 +1,39 @@
+[build-system]
+requires = ["chronver", "setuptools>=66"]
+build-backend = "setuptools.build_meta"
+
+[project]
+authors = [
+    { name = "RadiaSoft LLC", email = "pip@radiasoft.net" },
+]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Environment :: Web Environment",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Natural Language :: English",
+    "Programming Language :: Python",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+dependencies = [
+    # the raw HTU stacks are written with HDF5 2.0, which h5py bundles from 3.16
+    "h5py>=3.16",
+    "numpy",
+]
+description = "Small apps for looking at and working with HTU data and the HTU twin"
+dynamic = ["version"]
+name = "htu-twin-apps"
+readme = "README.md"
+requires-python = ">=3.10"
+
+[project.scripts]
+htu-shot-viewer = "htu_twin_apps.shot_viewer.server:main"
+
+[project.urls]
+Homepage = "https://github.com/radiasoft/htu-twin-apps"
+
+[tool.setuptools.package-data]
+htu_twin_apps = ["*/static/**"]
+
+[tool.setuptools.packages.find]
+include = ["htu_twin_apps*"]

@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HTU Shot Viewer</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <h1>HTU shot viewer</h1>
+    <label class="field">
+      <span>Scan</span>
+      <select id="scan-select"></select>
+    </label>
+    <p id="scan-info" class="muted"></p>
+  </header>
+
+  <section id="beamline" class="beamline" aria-label="Beamline schematic">
+    <div class="beamline-head">
+      <h2>Beamline <span class="muted small">beam order, not to scale · hover for details, click to list the columns</span></h2>
+      <ul class="bl-legend">
+        <li class="bl-scanned"><svg viewBox="0 0 14 14"><rect class="glyph" x="1.5" y="1.5" width="11" height="11" rx="2"/></svg>Scanned</li>
+        <li class="bl-logged bl-changed"><svg viewBox="0 0 14 14"><rect class="glyph" x="2" y="2" width="10" height="10" rx="2"/></svg>Setting changed</li>
+        <li class="bl-saved"><svg viewBox="0 0 14 14"><rect class="glyph" x="1.5" y="1.5" width="11" height="11" rx="2"/></svg>Images, spectra or traces saved</li>
+        <li class="bl-logged"><svg viewBox="0 0 14 14"><rect class="glyph" x="1.5" y="1.5" width="11" height="11" rx="2"/></svg>Scalars logged only</li>
+        <li class="bl-absent"><svg viewBox="0 0 14 14"><rect class="glyph" x="1.5" y="1.5" width="11" height="11" rx="2"/></svg>Not in this scan</li>
+        <li class="bl-collected"><svg viewBox="0 0 14 14"><circle class="bl-dot" cx="7" cy="7" r="3"/></svg>Collected in the charts</li>
+      </ul>
+    </div>
+    <div class="beamline-scroll"><svg id="beamline-svg" role="img" aria-label="HTU beamline, devices in beam order"></svg></div>
+    <div id="beamline-tray" class="chips beamline-tray"></div>
+    <div id="beamline-tip" class="beamline-tip" role="tooltip" hidden></div>
+  </section>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <section id="charts" class="charts"></section>
+      <section id="table-view" class="table-view" hidden></section>
+      <section>
+        <h2>Collect</h2>
+        <p class="muted small">Pick the scalars to collect per shot.</p>
+        <input id="column-filter" type="search" placeholder="Filter columns, e.g. ALineEBeam3 2ndmom">
+        <div id="column-list" class="column-list"></div>
+      </section>
+      <section>
+        <h2>Collected <span id="collected-count" class="muted"></span></h2>
+        <div id="collected" class="chips"></div>
+        <div class="controls">
+          <label class="field">
+            <span>X axis</span>
+            <select id="x-select"></select>
+          </label>
+          <label class="check"><input id="show-steps" type="checkbox" checked> Step mean ± sd</label>
+          <label class="check"><input id="show-table" type="checkbox"> Table view</label>
+          <a id="download" class="button" href="#" download>Download CSV</a>
+        </div>
+      </section>
+    </aside>
+
+    <main>
+      <section id="timeline" class="timeline" hidden>
+        <div class="transport">
+          <button id="first-shot" type="button" aria-label="First shot" title="First shot">⏮</button>
+          <button id="prev-shot" type="button" aria-label="Previous shot" title="Previous shot (←)">◀</button>
+          <button id="play" type="button" aria-label="Play" title="Play / pause (space)">▶ Play</button>
+          <button id="next-shot" type="button" aria-label="Next shot" title="Next shot (→)">▶</button>
+          <button id="last-shot" type="button" aria-label="Last shot" title="Last shot">⏭</button>
+          <label class="field">
+            <span>Speed</span>
+            <select id="speed">
+              <option value="0.5">0.5 shot/s</option>
+              <option value="1" selected>1 shot/s</option>
+              <option value="2">2 shots/s</option>
+              <option value="4">4 shots/s</option>
+            </select>
+          </label>
+        </div>
+        <input id="shot-slider" type="range" min="0" max="0" value="0" aria-label="Shot">
+        <p id="timeline-label" class="timeline-label"></p>
+      </section>
+
+
+      <section id="shot-panel" class="shot-panel" hidden>
+        <div class="shot-head">
+          <h2 id="shot-title">Shot</h2>
+          <p id="shot-meta" class="muted"></p>
+        </div>
+        <div id="shot-collected" class="stat-row"></div>
+        <h3>Devices</h3>
+        <div id="device-toggles" class="chips"></div>
+        <div id="device-frames" class="frames"></div>
+        <h3>Machine settings</h3>
+        <label class="check small"><input id="settings-varying" type="checkbox" checked> Only settings that change during this scan</label>
+        <div id="settings" class="settings"></div>
+        <details>
+          <summary>All scalars for this shot</summary>
+          <input id="scalar-filter" type="search" placeholder="Filter scalars">
+          <table id="scalar-table" class="scalars"></table>
+        </details>
+      </section>
+      <p id="empty-hint" class="muted">Collect one or more scalars on the left; their per-shot charts appear above the Collect panel. Click a point, or use the timeline, to move between shots.</p>
+    </main>
+  </div>
+  <script src="beamline.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
