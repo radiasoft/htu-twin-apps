@@ -5,6 +5,7 @@ is a subpackage of `htu_twin_apps` with its own README and console script; they 
 
 | App | Command | What it does |
 |---|---|---|
+| [LPA source](htu_twin_apps/lpa_source/README.md) | `htu-lpa-source` | An adjustable LPA source tracked through the HTU twin to the spectrometer, compared with a measured spectrum |
 | [Shot viewer](htu_twin_apps/shot_viewer/README.md) | `htu-shot-viewer` | Browse HTU scans shot by shot in the browser: scalars, images, machine settings and a beamline schematic |
 
 ## Install

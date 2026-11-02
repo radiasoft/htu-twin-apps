@@ -26,7 +26,17 @@ name = "htu-twin-apps"
 readme = "README.md"
 requires-python = ">=3.10"
 
+[project.optional-dependencies]
+# also needs the HTU twin's `htu` package (geecs-lume-twin), which is not on PyPI
+lpa-source = [
+    "cheetah-accelerator",
+    "matplotlib",
+    "openpmd-beamphysics",
+    "torch",
+]
+
 [project.scripts]
+htu-lpa-source = "htu_twin_apps.lpa_source.compare:main"
 htu-shot-viewer = "htu_twin_apps.shot_viewer.server:main"
 
 [project.urls]

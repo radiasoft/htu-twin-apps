@@ -98,7 +98,8 @@ async function loadScans() {
   for (const s of scans) {
     const option = document.createElement("option");
     option.value = s.id;
-    option.textContent = `${s.id} — ${s.description || "no description"} (${s.shots} shots)`;
+    const only = s.analysis_only ? ", scalars only" : "";
+    option.textContent = `${s.id} — ${s.description || "no description"} (${s.shots} shots${only})`;
     select.appendChild(option);
   }
   const link = new URLSearchParams(location.hash.slice(1));
@@ -132,9 +133,13 @@ async function openScan(id) {
   state.hiddenDevices.clear();
   remember("scan", id);
   const s = state.scan;
-  const parameter = s.parameter ? `scanning ${s.parameter}` : "no scan parameter (a noscan)";
-  $("scan-info").textContent =
-    `${s.shots} shots · ${parameter} · ${s.device_list.length} device stack(s) · ${s.columns.length} scalars`;
+  const parameter = s.parameter
+    ? `scanning ${s.parameter}`
+    : s.analysis_only ? "scan parameter unknown (no ScanInfo)" : "no scan parameter (a noscan)";
+  const stacks = s.analysis_only
+    ? "raw folder missing: analysis table only"
+    : `${s.device_list.length} device stack(s)`;
+  $("scan-info").textContent = `${s.shots} shots · ${parameter} · ${stacks} · ${s.columns.length} scalars`;
   $("device-frames").innerHTML = "";
   $("shot-slider").max = String(s.shot.length - 1);
   $("timeline").hidden = s.shot.length === 0;
@@ -459,7 +464,9 @@ function renderSettings() {
     group.rows.push(
       `<tr${changed ? ' class="changed" title="Changed since the previous shot"' : ""}>` +
       `<td class="name">${escapeHtml(setting.name)}</td>` +
-      `<td>${format(value)}${changed ? `<div class="badge">was ${format(before)}</div>` : ""}</td>` +
+      // the "was" line is always there (hidden when unchanged), so rows keep their height
+      `<td class="value">${format(value)}<div class="badge"${changed ? "" : " hidden"}>` +
+      `${changed ? `was ${format(before)}` : "&nbsp;"}</div></td>` +
       `<td class="range">${varies ? `${format(min)} … ${format(max)}` : "steady"}</td></tr>`);
   }
   const html = groups.filter((g) => g.rows.length).map((g) =>
@@ -479,7 +486,9 @@ function renderDeviceToggles() {
   const box = $("device-toggles");
   box.innerHTML = "";
   if (!state.scan.device_list.length) {
-    box.innerHTML = '<span class="muted">This scan saved no device stacks.</span>';
+    box.innerHTML = state.scan.analysis_only
+      ? '<span class="muted">Only the analysis table of this scan is here; its raw folder, with the device stacks, is not.</span>'
+      : '<span class="muted">This scan saved no device stacks.</span>';
     return;
   }
   for (const device of state.scan.device_list) {

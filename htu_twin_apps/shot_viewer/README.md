@@ -29,7 +29,9 @@ cdn.jsdelivr.net, so the browser needs internet access.
 
 - **Scans:** every `scans/Scan*` folder with a `ScanDataScan*.txt`, found anywhere under the data
   directory. The menu shows each scan's description from its
-  `ScanInfoScan*.ini`.
+  `ScanInfoScan*.ini`. A scan whose raw folder is missing but whose analysis table
+  (`analysis/s<N>.txt`) is there is listed as "scalars only": its scalars can be collected,
+  charted and exported, but it has no device stacks, description or scan parameter.
 - **Collect:** tick scalar columns of the scan table, grouped by device (filter to find them). Each
   collected column gets a chart against the x axis you choose: shot number, the scan parameter, the
   scan step or another collected column. The step mean ± standard deviation is drawn on top. A table
