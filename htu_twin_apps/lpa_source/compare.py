@@ -31,6 +31,8 @@ import os
 import pathlib
 import time
 
+from htu_twin_apps.lpa_source import scans as htu_scans
+
 # The stitched spectrometer analysis (GEECS ScanAnalysis `UC_BCaveMagSpecStitcher`) of a scan.
 AVERAGE_SPECTRUM = (
     "analysis/Scan{scan:03d}/UC_BCaveMagSpecStitcher/Array1DScanAnalyzer/"
@@ -72,9 +74,12 @@ def compare(transported, measured: Measured) -> dict:
         "transmission": transported.transmission(),
         "in_window": f,
         **_stats(measured.energy_mev, d),
-        "distance": 0.5 * float(numpy.abs(d - measured.density).sum() * ENERGY_STEP_MEV),
+        "distance": 0.5
+        * float(numpy.abs(d - measured.density).sum() * ENERGY_STEP_MEV),
         "yp_rms_mrad": float(
-            numpy.sqrt(numpy.cov(transported.yp_mrad[a], aweights=transported.charge_pc[a]))
+            numpy.sqrt(
+                numpy.cov(transported.yp_mrad[a], aweights=transported.charge_pc[a])
+            )
         ),
     }
 
@@ -136,6 +141,14 @@ def main():
         help="the NERSC runs to start sources from (default: the nominal ones)",
     )
     p.add_argument(
+        "--energy-reference",
+        choices=("early", "late"),
+        default="early",
+        help="the spectrometer driver's field setting taken as right for every scan's energy "
+        + "axis: early (Scans 014 to 020's; default) or late (Scan025's): "
+        + "scans.CAM1_AXIS_START_MEV, scans.LATE_CAM1_AXIS_START_MEV",
+    )
+    p.add_argument(
         "--fit",
         help="comma-separated knobs to fit (LPASource fields or twin machine-state keys), "
         + "such as energy_mev,energy_sigma_mev,energy_tail_mev,divergence_x_mrad,"
@@ -155,6 +168,11 @@ def main():
         + "profiles (ImageInterp; needs --fit or --source; many hours)",
     )
     p.add_argument(
+        "--profiles-spectrum",
+        action="store_true",
+        help="add Scan016's spectrum to the profile fit's objective (energy_profiles.fit)",
+    )
+    p.add_argument(
         "--profiles-knobs",
         help="the energy-resolved profile fit's knobs, comma-separated "
         + "(default: energy_profiles.FIT_NAMES)",
@@ -172,7 +190,9 @@ def main():
         help="how the pointing fit predicts the vertical profiles: through the twin's model of "
         + "the spectrometer (default), or the older y + d y' stand-in",
     )
-    p.add_argument("--save", type=pathlib.Path, help="write the last fitted source as JSON")
+    p.add_argument(
+        "--save", type=pathlib.Path, help="write the last fitted source as JSON"
+    )
     p.add_argument(
         "--slit",
         choices=("jaws", "blade", "jaws_blade"),
@@ -200,7 +220,9 @@ def main():
     a = p.parse_args()
     if a.data is None:
         p.error("give the data directory, or set $HTU_DATA")
-    if (a.aline or a.pointing or a.profiles or a.slit or a.joint) and not (a.fit or a.source):
+    if (a.aline or a.pointing or a.profiles or a.slit or a.joint) and not (
+        a.fit or a.source
+    ):
         p.error(
             "--aline, --pointing, --profiles, --slit and --joint need a source to start from: "
             + "--fit or --source"
@@ -208,7 +230,13 @@ def main():
     import torch
 
     torch.set_num_threads(a.threads)
-    m = measured(a.data, 16)
+    a.axis_start_mev = (
+        htu_scans.LATE_CAM1_AXIS_START_MEV
+        if a.energy_reference == "late"
+        else htu_scans.CAM1_AXIS_START_MEV
+    )
+    # Scan016's spectrum is on the early setting
+    m = measured(a.data, 16, a.axis_start_mev / htu_scans.CAM1_AXIS_START_MEV)
     s = _sources(a)
     r = _run(s, m)
     f = _load(a.source) if a.source else None
@@ -225,7 +253,7 @@ def main():
         f = _aline(a, f)
         r["after the A-line fit"] = _run({"": (_particles(f[0]), *f)}, m)[""]
     if a.profiles:
-        f = _profiles(a, f)
+        f = _profiles(a, f, m)
         r["after the profile fit"] = _run({"": (_particles(f[0]), *f)}, m)[""]
     if a.joint:
         f = _joint(a, f, m)
@@ -235,21 +263,25 @@ def main():
     print(f"plot: {a.out}")
     if a.save and f:
         a.save.write_text(
-            json.dumps({"source": dataclasses.asdict(f[0]), "machine_state": f[1]}, indent=1)
+            json.dumps(
+                {"source": dataclasses.asdict(f[0]), "machine_state": f[1]}, indent=1
+            )
         )
         print(f"saved: {a.save}")
 
 
-def measured(data: pathlib.Path, scan: int) -> Measured:
+def measured(data: pathlib.Path, scan: int, axis_scale: float = 1.0) -> Measured:
     """Scan `scan`'s average stitched spectrum, below `data`, in ENERGY_STEP_MEV bins, normalized.
 
     The stitched spectrum is interpolated onto its own MEASURED_STEP_MEV grid (the two cameras'
     samples interleave where they overlap) and averaged over each bin; a partial last bin is
-    dropped.
+    dropped. `axis_scale` multiplies its energy axis first: a test of the camera driver's field
+    setting (`scans.CAM1_AXIS_START_MEV`).
     """
     f = _one(data, AVERAGE_SPECTRUM.format(scan=scan))
     with h5py.File(f, "r") as h:
         x, y = h["data"][()].astype(float).T
+    x = x * axis_scale
     k = round(ENERGY_STEP_MEV / MEASURED_STEP_MEV)
     e = numpy.arange(x.min(), x.max(), MEASURED_STEP_MEV)
     e = e[: e.size // k * k]
@@ -265,8 +297,12 @@ def measured(data: pathlib.Path, scan: int) -> Measured:
 def spectrum(transported, energy_mev: numpy.ndarray) -> tuple[numpy.ndarray, float]:
     """The transported charge's density on the grid `energy_mev`, normalized over the grid, and
     the fraction of the transported charge that falls on the grid."""
-    e = numpy.append(energy_mev - ENERGY_STEP_MEV / 2, energy_mev[-1] + ENERGY_STEP_MEV / 2)
-    h, _ = numpy.histogram(transported.energy_mev, bins=e, weights=transported.charge_pc)
+    e = numpy.append(
+        energy_mev - ENERGY_STEP_MEV / 2, energy_mev[-1] + ENERGY_STEP_MEV / 2
+    )
+    h, _ = numpy.histogram(
+        transported.energy_mev, bins=e, weights=transported.charge_pc
+    )
     s = h.sum()
     if s <= 0:
         raise ValueError("no transported charge in the spectrometer's energy window")
@@ -280,14 +316,18 @@ def _aline(args, start: tuple) -> tuple:
 
     n = args.aline_knobs.split(",") if args.aline_knobs else aline.FIT_NAMES
     f = aline.fit(
-        slit.measured(args.data),
-        {x: aline.measured(args.data, x) for x in aline.PAIRS},
+        slit.measured(args.data, axis_start_mev=args.axis_start_mev),
+        {x: aline.measured(args.data, x, args.axis_start_mev) for x in aline.PAIRS},
         start[0],
         {
             **slit.SLIT_STARTS["jaws_blade"],
             **{x: 1.0 for x in twin.SCALES.values() if x in n},
             **{x: 0.0 for v in twin.OFFSETS.values() for x in v if x in n},
-            **({aline.PIXEL_KEY: aline.DEFAULT_UM_PER_PX} if aline.PIXEL_KEY in n else {}),
+            **(
+                {aline.PIXEL_KEY: aline.DEFAULT_UM_PER_PX}
+                if aline.PIXEL_KEY in n
+                else {}
+            ),
             **start[1],
         },
         names=n,
@@ -317,7 +357,9 @@ def _fit(args, sources: dict, measured: Measured) -> tuple:
     from htu_twin_apps.lpa_source import fit, twin
 
     n, (_, s, m) = next((k, v) for k, v in sources.items() if v[1] is not None)
-    f = fit.fit(measured, s, args.fit.split(","), {**twin.SCAN016_STATE, **twin.without_slit(m)})
+    f = fit.fit(
+        measured, s, args.fit.split(","), {**twin.SCAN016_STATE, **twin.without_slit(m)}
+    )
     c = fit.check(f, measured)
     v = {**dataclasses.asdict(f.source), **f.machine_state}
     print(
@@ -327,7 +369,10 @@ def _fit(args, sources: dict, measured: Measured) -> tuple:
         + "\n"
     )
     # the fitted state, less Scan016's own settings: what a later scan's settings go under
-    k = {**m, **{x: y for x, y in f.machine_state.items() if x not in twin.SCAN016_STATE}}
+    k = {
+        **m,
+        **{x: y for x, y in f.machine_state.items() if x not in twin.SCAN016_STATE},
+    }
     return (
         f"fitted from {n}",
         _run({"": (_particles(f.source), f.source, k)}, measured)[""],
@@ -349,8 +394,8 @@ def _joint(args, start: tuple, spectrum: Measured) -> tuple:
     d = None if args.joint_no_spectrum else spectrum
     f = joint.fit(
         d,
-        {x: pointing.measured(args.data, x) for x in t},
-        {x: pointing.measured(args.data, x) for x in h},
+        {x: pointing.measured(args.data, x, args.axis_start_mev) for x in t},
+        {x: pointing.measured(args.data, x, args.axis_start_mev) for x in h},
         start[0],
         {
             **{x: 1.0 for x in twin.SCALES.values() if x in n},
@@ -370,7 +415,8 @@ def _joint(args, start: tuple, spectrum: Measured) -> tuple:
         + f"{f.training_numbers - (d is not None)} numbers\n  per camera (chi2, scale, zero, "
         + "floor): "
         + "; ".join(
-            f"{c} {', '.join(f'{x:.3g}' for x in y)}" for c, y in f.parts["cameras"].items()
+            f"{c} {', '.join(f'{x:.3g}' for x in y)}"
+            for c, y in f.parts["cameras"].items()
         )
         + f"\n  held out ({', '.join(h) or 'none'}): chi2 {f.held_out_chi2:.0f} over "
         + f"{f.held_out_numbers} numbers, the training cameras fixed\n  "
@@ -396,7 +442,13 @@ def _logger(path: pathlib.Path | None, name: str):
             with open(path, "a") as f:
                 f.write(
                     json.dumps(
-                        {"fit": name, "n": n, "value": value, "values": values, "time": time.time()}
+                        {
+                            "fit": name,
+                            "n": n,
+                            "value": value,
+                            "values": values,
+                            "time": time.time(),
+                        }
                     )
                     + "\n"
                 )
@@ -449,14 +501,14 @@ def _plot(measured: Measured, results: dict, path: pathlib.Path) -> None:
     f.savefig(path, dpi=100, bbox_inches="tight")
 
 
-
-
 def _pointing(args, start: tuple) -> tuple:
     """The pointing fit from `start` (LPASource, machine state); prints and plots it, and
     returns the source and machine state it ends with."""
     from htu_twin_apps.lpa_source import pointing
 
-    s = {n: pointing.measured(args.data, n) for n in pointing.SCANS}
+    s = {
+        n: pointing.measured(args.data, n, args.axis_start_mev) for n in pointing.SCANS
+    }
     f = pointing.fit(
         s,
         start[0],
@@ -475,7 +527,9 @@ def _pointing(args, start: tuple) -> tuple:
             for k in pointing.FIT_NAMES
         )
         + "\n  per camera (chi2, scale, zero, floor): "
-        + "; ".join(f"{c} {', '.join(f'{x:.3g}' for x in y)}" for c, y in f.cameras.items())
+        + "; ".join(
+            f"{c} {', '.join(f'{x:.3g}' for x in y)}" for c, y in f.cameras.items()
+        )
         + "\n"
     )
     p = args.out.with_name(args.out.stem + "_pointing" + args.out.suffix)
@@ -484,31 +538,55 @@ def _pointing(args, start: tuple) -> tuple:
     return f.source, f.machine_state
 
 
-def _profiles(args, start: tuple) -> tuple:
-    """The energy-resolved vertical profile fit from `start` (LPASource, machine state); prints
-    it, and returns the source and machine state it ends with."""
+def _profiles(args, start: tuple, spectrum: Measured) -> tuple:
+    """The energy-resolved vertical profile fit from `start` (LPASource, machine state), with
+    Scan016's `spectrum` if --profiles-spectrum; prints it, and returns the source and machine
+    state it ends with."""
     from htu_twin_apps.lpa_source import energy_profiles, twin
 
-    n = args.profiles_knobs.split(",") if args.profiles_knobs else energy_profiles.FIT_NAMES
-    s = {x: energy_profiles.measured(args.data, x) for x in energy_profiles.SCANS}
+    n = (
+        args.profiles_knobs.split(",")
+        if args.profiles_knobs
+        else energy_profiles.FIT_NAMES
+    )
+    s = {
+        x: energy_profiles.measured(args.data, x, args.axis_start_mev)
+        for x in energy_profiles.SCANS
+    }
     f = energy_profiles.fit(
         s,
         start[0],
         {
-            **{x: 1.0 for x in twin.SCALES.values() if x in n},
+            **{
+                x: 1.0
+                for x in (
+                    *twin.SCALES.values(),
+                    twin.PMQ_SCALE_KEY,
+                    htu_scans.ENERGY_LABEL_KEY,
+                )
+                if x in n
+            },
             **{x: 0.0 for v in twin.OFFSETS.values() for x in v if x in n},
             **start[1],
         },
         names=n,
         workers=args.workers,
         threads=args.threads,
+        spectrum=spectrum if args.profiles_spectrum else None,
         log=_logger(args.log, "profiles"),
     )
     print(
         f"energy-resolved profile fit ({', '.join(s)}, {f.measured_numbers} measured numbers; "
         + f"{f.evaluations} evaluations): chi2 {f.start_chi2:.0f} -> {f.chi2:.0f}\n  "
         + "per camera (chi2, scale, zero, floor): "
-        + "; ".join(f"{c} {', '.join(f'{x:.3g}' for x in y)}" for c, y in f.cameras.items())
+        + "; ".join(
+            f"{c} {', '.join(f'{x:.3g}' for x in y)}"
+            for c, y in f.cameras.items()
+            if isinstance(y, tuple)
+        )
+        + "".join(
+            f"; {c} {y:.4g}" for c, y in f.cameras.items() if not isinstance(y, tuple)
+        )
         + "\n  "
         + ", ".join(f"{k} = {v:.4g}" for k, v in f.values.items())
         + "\n"
@@ -521,13 +599,19 @@ def _run(sources: dict, measured: Measured) -> dict:
     slit out: (comparison, density, LPASource or None).
 
     The slit's keys are dropped: Scan016 logs no jaw positions, with the chicane off they cut
-    nothing, and a blade's edges read as jaws would block the beam.
+    nothing, and a blade's edges read as jaws would block the beam. So is the A-line camera's
+    pixel size (`aline.PIXEL_KEY`), not a twin key.
     """
-    from htu_twin_apps.lpa_source import twin
+    from htu_twin_apps.lpa_source import aline, twin
 
     rv = {}
     for n, (g, s, m) in sources.items():
-        t = twin.to_spectrometer(g, {**twin.SCAN016_STATE, **twin.without_slit(m)})
+        k = {
+            x: v
+            for x, v in twin.without_slit(m).items()
+            if x not in (aline.PIXEL_KEY, htu_scans.ENERGY_LABEL_KEY)
+        }
+        t = twin.to_spectrometer(g, {**twin.SCAN016_STATE, **k})
         rv[n] = (compare(t, measured), spectrum(t, measured.energy_mev)[0], s)
     return rv
 
@@ -549,7 +633,7 @@ def _slit(args, start: tuple) -> tuple:
     returns the source and machine state it ends with."""
     from htu_twin_apps.lpa_source import slit
 
-    s = slit.measured(args.data)
+    s = slit.measured(args.data, axis_start_mev=args.axis_start_mev)
     m = {**slit.SLIT_STARTS[args.slit], **start[1]}
     f = slit.fit(
         s,
@@ -587,7 +671,9 @@ def _sources(args) -> dict:
         s, m = _load(args.source)
         rv[f"saved {args.source.name}"] = (source.particles(s), s, m)
     rv["twin default Gaussian"] = (
-        htu.source.make_beam(htu.source.SourceParams(num_particles=n)).to_openpmd_particlegroup(),
+        htu.source.make_beam(
+            htu.source.SourceParams(num_particles=n)
+        ).to_openpmd_particlegroup(),
         None,
         {},
     )
@@ -618,7 +704,11 @@ def _table(measured: Measured, results: dict) -> str:
         + f"rms {s['rms_mev']:.1f} MeV in {measured.energy_mev[0]:.1f}-"
         + f"{measured.energy_mev[-1]:.1f} MeV"
         + (f"; shots: peak {p[0]:.1f}-{p[1]:.1f}" if p is not None else "")
-        + (f", centroid {c[0]:.1f}-{c[1]:.1f} (10th-90th percentile)" if c is not None else ""),
+        + (
+            f", centroid {c[0]:.1f}-{c[1]:.1f} (10th-90th percentile)"
+            if c is not None
+            else ""
+        ),
         "",
         f"{'source':28s} {'transm':>7s} {'in win':>7s} {'peak':>7s} {'mean':>7s} {'rms':>7s} "
         + f"{'dist':>6s} {'yp rms':>7s}",

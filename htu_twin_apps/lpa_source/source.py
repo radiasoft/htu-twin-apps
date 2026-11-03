@@ -93,12 +93,19 @@ def from_nersc(dataset: pathlib.Path, run: str, **overrides) -> LPASource:
     )
     for p in ("x", "y"):
         rv[f"divergence_{p}_mrad"] = (
-            math.sqrt(o[f"cov_u{p}_u{p}"]) / u * 1e3 * (u * ELECTRON_MASS_MEV / s.reference_mev)
+            math.sqrt(o[f"cov_u{p}_u{p}"])
+            / u
+            * 1e3
+            * (u * ELECTRON_MASS_MEV / s.reference_mev)
         )
         rv[f"pointing_{p}_mrad"] = o[f"mean_u{p}"] / u * 1e3
         # d(angle)/d(E/reference) = (d u<p> / d uz) * reference / E_mean
         rv[f"pointing_slope_{p}_mrad"] = (
-            o[f"cov_u{p}_uz"] / o["cov_uz_uz"] * 1e3 * s.reference_mev / (u * ELECTRON_MASS_MEV)
+            o[f"cov_u{p}_uz"]
+            / o["cov_uz_uz"]
+            * 1e3
+            * s.reference_mev
+            / (u * ELECTRON_MASS_MEV)
         )
         rv[f"size_{p}_um"] = math.sqrt(o[f"cov_{p}_{p}"]) * 1e6
     return dataclasses.replace(s, **{**rv, **overrides})
@@ -143,7 +150,7 @@ def _angles(source: LPASource, plane: str, energies, generator):
         + getattr(source, f"pointing_slope_{plane}_mrad") * (r - 1.0)
         + generator.normal(0.0, 1.0, energies.size)
         * getattr(source, f"divergence_{plane}_mrad")
-        * r ** -source.divergence_power
+        * r**-source.divergence_power
     )
 
 

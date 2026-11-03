@@ -52,6 +52,9 @@ FIT_NAMES = (
 MIN_FRACTION = 0.02
 # Spectrometer scans that step one EMQ, by scan folder name.
 SCANS = ("Scan025", "Scan028", "Scan030")
+# With Scan016's spectrum in the fit, its distance counts as one number of this error (about twice
+# its sampling noise, as in `joint`).
+SPECTRUM_SIGMA = 0.01
 
 
 @dataclasses.dataclass
@@ -103,9 +106,12 @@ def fit(
     num_particles: int = 30_000,
     workers: int = 5,
     threads: int = 2,
+    spectrum=None,
     log=None,
 ) -> EnergyProfilesFit:
-    """Fit `names` to `scans` (by name, as `measured()` gives each).
+    """Fit `names` to `scans` (by name, as `measured()` gives each), and to Scan016's spectrum
+    if `spectrum` is given: then the objective is the profiles' chi^2 per measured number plus
+    `(distance / SPECTRUM_SIGMA) ** 2`, so the two count alike whatever the profiles' excess.
 
     Args:
         scans: each scan's steps.
@@ -117,14 +123,26 @@ def fit(
         num_particles: particles per evaluation.
         workers: worker processes tracking the steps.
         threads: torch threads per worker.
+        spectrum: Scan016's measured spectrum (`compare.measured`), or None.
     """
     from htu_twin_apps.lpa_source import fit as lpa_fit
 
     s = dataclasses.replace(source, num_particles=num_particles)
+    n0 = _numbers(scans)
     with lpa_fit.pool(workers, threads) as p:
 
         def _chi2(v):
-            return score(scans, _predict_parallel(p, scans, *lpa_fit.apply(s, machine_state, names, v)))
+            f = lpa_fit.apply(s, machine_state, names, v)
+            d = p.submit(_spectrum_distance, f[0], f[1], spectrum) if spectrum else None
+            c, k = score(scans, _predict_parallel(p, scans, *f))
+            if d is None:
+                return c, k
+            d = d.result()
+            return c / n0 + (d / SPECTRUM_SIGMA) ** 2, {
+                **k,
+                "chi2": c,
+                "spectrum_distance": d,
+            }
 
         x0 = lpa_fit.knobs(s, machine_state, names)
         x, c, n = lpa_fit.minimize(
@@ -153,16 +171,20 @@ def fit(
     )
 
 
-def measured(data: pathlib.Path, scan: str) -> list:
+def measured(
+    data: pathlib.Path, scan: str, axis_start_mev: float | None = None
+) -> list:
     """The steps of `scan` (a scan folder name, such as `Scan025`) found below `data`."""
     f, rows = htu_scans.table(data, scan)
     n = htu_scans.step_numbers(rows)
     k = sorted(set(n))
-    c = {x: _camera(f, rows, x, n, k) for x in CAMERAS}
+    c = {x: _camera(f, rows, x, n, k, axis_start_mev) for x in CAMERAS}
     return [
         Step(
             cameras={x: c[x][j] for x in CAMERAS},
-            machine_state=htu_scans.machine_state([r for r, m in zip(rows, n) if m == i]),
+            machine_state=htu_scans.machine_state(
+                [r for r, m in zip(rows, n) if m == i]
+            ),
         )
         for j, i in enumerate(k)
     ]
@@ -188,7 +210,8 @@ def score(scans: dict, predictions: dict) -> tuple:
                 k = numpy.isfinite(q.centroid)
                 m.append(
                     numpy.stack(
-                        [q.centroid[k], q.rms[k], q.centroid_error[k], q.rms_error[k]], axis=1
+                        [q.centroid[k], q.rms[k], q.centroid_error[k], q.rms_error[k]],
+                        axis=1,
                     )
                 )
                 p.append(numpy.stack([v[camera][0][k], v[camera][1][k]], axis=1))
@@ -224,18 +247,26 @@ def score(scans: dict, predictions: dict) -> tuple:
     return sum(rv[c][g][0] for c in CAMERAS), {c: rv[c][g] for c in CAMERAS}
 
 
-def _camera(folder: pathlib.Path, rows: list, camera: str, steps: list, step_numbers: list) -> list:
+def _camera(
+    folder: pathlib.Path,
+    rows: list,
+    camera: str,
+    steps: list,
+    step_numbers: list,
+    axis_start_mev: float | None = None,
+) -> list:
     """`camera`'s EnergyProfiles at each of `step_numbers`."""
     i, zi = htu_scans.stack(folder, f"UC_BCaveMagSpec{camera}-ImageInterp", rows)
-    s, _ = htu_scans.stack(folder, f"UC_BCaveMagSpec{camera}-interpSpec", [])
     d, _ = htu_scans.stack(folder, f"UC_BCaveMagSpec{camera}-interpDiv", [])
-    e = s[0, :, 0].astype(float)
+    e = htu_scans.energy_axis(folder, camera, axis_start_mev)
     # POSIT: ImageInterp's rows are interpDiv's AngleAxis in reverse order, its columns
     # interpSpec's energies (checked on Scans 025, 028, 030: the row sums match interpDiv
     # reversed, the column sums interpSpec)
     a = d[0, ::-1, 0].astype(float)
     if i.shape[1:] != (a.size, e.size):
-        raise ValueError(f"{folder.name} {camera}: ImageInterp {i.shape[1:]} against axes {(a.size, e.size)}")
+        raise ValueError(
+            f"{folder.name} {camera}: ImageInterp {i.shape[1:]} against axes {(a.size, e.size)}"
+        )
     b = numpy.arange(e.min(), e.max() + BIN_MEV / 2, BIN_MEV)
     j = numpy.clip(numpy.digitize(e, b) - 1, 0, b.size - 2)
     rv = []
@@ -245,7 +276,9 @@ def _camera(folder: pathlib.Path, rows: list, camera: str, steps: list, step_num
             raise ValueError(f"{folder.name} step {t}: no {camera} ImageInterp frame")
         # per shot, per slice: the vertical profile
         y = numpy.clip(i[f].astype(float), 0, None)
-        p = numpy.stack([y[:, :, j == k].sum(axis=2) for k in range(b.size - 1)], axis=1)
+        p = numpy.stack(
+            [y[:, :, j == k].sum(axis=2) for k in range(b.size - 1)], axis=1
+        )
         m = p.mean(axis=0)
         w = m.sum(axis=1)
         ok = w >= MIN_FRACTION * w.sum()
@@ -292,7 +325,10 @@ def _predict_one(source, step, machine_state):
 
 
 def _predict_parallel(pool, scans: dict, source, machine_state: dict) -> dict:
-    j = {n: [pool.submit(_predict_one, source, s, machine_state) for s in v] for n, v in scans.items()}
+    j = {
+        n: [pool.submit(_predict_one, source, s, machine_state) for s in v]
+        for n, v in scans.items()
+    }
     return {n: [x.result() for x in v] for n, v in j.items()}
 
 
@@ -301,14 +337,16 @@ def _predict_step(particles, step: Step, machine_state: dict) -> dict:
     from htu_twin_apps.lpa_source import fit, pointing, twin
 
     m = {**step.machine_state, **twin.without_slit(machine_state)}
+    # the data's energy labels are the true energies times this (scans.ENERGY_LABEL_KEY)
+    s = m.pop(htu_scans.ENERGY_LABEL_KEY, 1.0)
     t = twin.to_spectrometer(particles, m, reference_mev=fit.REFERENCE_MEV)
     f = {**htu.model.DEFAULT_MACHINE_STATE, **m}["magspec_b"]
     rv = {}
     for c, q in step.cameras.items():
         b = q.energy_mev
-        k = (t.charge_pc > 0) & (t.energy_mev >= b[0]) & (t.energy_mev < b[-1])
+        k = (t.charge_pc > 0) & (t.energy_mev * s >= b[0]) & (t.energy_mev * s < b[-1])
         y = pointing.screen_angles(t, k, f)
-        e = t.energy_mev[k]
+        e = t.energy_mev[k] * s
         w = t.charge_pc[k]
         with numpy.errstate(invalid="ignore"):
             g = (y >= q.angle_range[0]) & (y <= q.angle_range[1])
@@ -322,3 +360,27 @@ def _predict_step(particles, step: Step, machine_state: dict) -> dict:
                 rr[j] = numpy.sqrt(numpy.average((y[h] - cc[j]) ** 2, weights=w[h]))
         rv[c] = (cc, rr)
     return rv
+
+
+def _spectrum_distance(source, machine_state: dict, spectrum) -> float:
+    """Scan016's spectrum distance (`compare`) of `source` and `machine_state`, the slit out and
+    the twin's energies scaled to the data's labels (scans.ENERGY_LABEL_KEY)."""
+    from htu_twin_apps.lpa_source import aline, compare, fit, twin
+
+    m = {
+        k: v
+        for k, v in twin.without_slit(machine_state).items()
+        if k not in (aline.PIXEL_KEY, htu_scans.ENERGY_LABEL_KEY)
+    }
+    t = twin.to_spectrometer(
+        fit.sampled(source),
+        {**twin.SCAN016_STATE, **m},
+        reference_mev=fit.REFERENCE_MEV,
+    )
+    t = dataclasses.replace(
+        t, energy_mev=t.energy_mev * machine_state.get(htu_scans.ENERGY_LABEL_KEY, 1.0)
+    )
+    try:
+        return float(compare.compare(t, spectrum)["distance"])
+    except ValueError:
+        return 1.0

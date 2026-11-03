@@ -7,6 +7,7 @@ is a subpackage of `htu_twin_apps` with its own README and console script; they 
 |---|---|---|
 | [LPA source](htu_twin_apps/lpa_source/README.md) | `htu-lpa-source` | An adjustable LPA source tracked through the HTU twin to the spectrometer, compared with a measured spectrum |
 | [Shot viewer](htu_twin_apps/shot_viewer/README.md) | `htu-shot-viewer` | Browse HTU scans shot by shot in the browser: scalars, images, machine settings and a beamline schematic |
+| [Twin viewer](htu_twin_apps/twin_viewer/README.md) | `htu-twin-viewer` | The HTU twin with the fitted LPA source at a recorded scan's settings, step by step, beside the measurement |
 
 ## Install
 

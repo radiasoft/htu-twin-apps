@@ -7,7 +7,7 @@ tracked element by element with each element's own `track`: `Segment.track` merg
 transfer maps first, which is about ten times slower for these beams, and the simulator's
 `track()` does not keep the outgoing beam.
 
-Four changes to the twin's line:
+Changes to the twin's line:
 
 - The chicane slit can be a blade (`slit="blade"`): the twin's slit is two jaws that pass the
   beam between them (`slit="jaws"`, the default); a blade blocks the band between its edges and
@@ -23,7 +23,6 @@ Four changes to the twin's line:
 - The EMQs can be offset (OFFSETS): `emq1_x_mm` and `emq1_y_mm` (and EMQ2's, EMQ3's) move the
   quadrupole's field off the beam pipe's axis (its `misalignment`), the pipe's apertures staying
   where they are. Not twin keys either.
-
 - The PMQs get fringe fields (`pmq_fringe_mm`, PMQ_FRINGE_MM by default; None keeps the twin's
   hard-edged PMQs). The twin's PMQs are hard-edged, but they are only 16 to 29 mm long with a
   6 mm bore radius, so their fringe is a large part of them. Each PMQ's gradient is given a
@@ -34,8 +33,14 @@ Four changes to the twin's line:
   profiles. The triplet's region, from PMQ1's entrance less PMQ_FRINGE_EXTENT widths to PMQ3's
   exit plus as many, is tracked as PMQ_SLICE_M slices whose gradient is the three profiles'
   sum (permanent magnets' fields add), offset with the triplet; the bore apertures stay at the
-  magnets' ends. The PMQs must not be tilted (`pmq*_tilt_mrad`): differently tilted fields do not
-  sum to one tilted quadrupole.
+  magnets' ends.
+- Each PMQ can be rolled and offset on its own (PMQ_ERROR_KEYS: `pmq2_roll_deg`, `pmq2_dx_mm`,
+  `pmq2_dy_mm` and PMQ1's and PMQ3's), as Sam Barber's bench found (2026-10-08: PMQ2 0.27 / 0.07
+  mm off the PMQ1-PMQ3 axis, PMQ2 and PMQ3 rolled 0.38 and 1.86 deg relative to PMQ1; signs in
+  the twin's frame not known). The offsets are relative to the triplet's (`pmq_x_mm`,
+  `pmq_y_mm`), and the PMQ's bore apertures move with it. Not twin keys. A slice's field is then a
+  sum of quadrupoles with different rolls and centres; a sum of linear fields is linear, so each
+  slice is one quadrupole of the sum's strength, roll and centre (`_slice`).
 - The PMQ triplet's bore apertures move with the triplet. The twin offsets the three PMQs by
   `pmq_x_mm` and `pmq_y_mm` (their `misalignment`) but leaves the bore apertures at entrance and
   exit of each on the beam axis, so with an offset the clipping stays where the magnets were.
@@ -76,8 +81,19 @@ END_ELEMENT = "PIPE_AP8"
 # The chicane dipoles' fringe-field integral, used only with a pole gap: 0.5 is typical of an
 # unclamped fringe field (not measured).
 FRINGE_INTEGRAL = 0.5
+# Machine-state keys [mm] that offset an EMQ's field in x and y, by the EMQ's element.
+OFFSETS = {
+    "EMQ1H": ("emq1_x_mm", "emq1_y_mm"),
+    "EMQ2V": ("emq2_x_mm", "emq2_y_mm"),
+    "EMQ3H": ("emq3_x_mm", "emq3_y_mm"),
+}
 # The PMQ triplet's bore apertures, at entrance (i) and exit (o) of each PMQ (`htu.lattice`).
 PMQ_APERTURE = re.compile(r"^PMQ\d[HV]_AP[io]$")
+# Machine-state keys that roll [deg] and offset [mm, relative to the triplet] each PMQ, by its
+# number (1 to 3): (roll, x, y).
+PMQ_ERROR_KEYS = {
+    i: (f"pmq{i}_roll_deg", f"pmq{i}_dx_mm", f"pmq{i}_dy_mm") for i in (1, 2, 3)
+}
 # How many fringe widths the sliced region extends beyond the triplet's outer hard edges
 # (the gradient there is exp(-8), 3e-4, of the peak).
 PMQ_FRINGE_EXTENT = 8
@@ -86,14 +102,11 @@ PMQ_FRINGE_MM = 3.0
 # The PMQs (`htu.lattice`), and the drifts the sliced region begins and ends in.
 PMQ_MAGNET = re.compile(r"^PMQ\d[HV]$")
 PMQ_REGION = ("SrcToPMQ1", "PMQTripToTCPhos")
+# A machine-state key (not a twin key) that scales every PMQ's gradient: the PMQs' field values
+# are lattice constants with no stated source.
+PMQ_SCALE_KEY = "pmq_scale"
 # The length [m] of a slice of the PMQ triplet's region.
 PMQ_SLICE_M = 0.002
-# Machine-state keys [mm] that offset an EMQ's field in x and y, by the EMQ's element.
-OFFSETS = {
-    "EMQ1H": ("emq1_x_mm", "emq1_y_mm"),
-    "EMQ2V": ("emq2_x_mm", "emq2_y_mm"),
-    "EMQ3H": ("emq3_x_mm", "emq3_y_mm"),
-}
 # Machine-state keys that scale a magnet's current, by the twin key they scale.
 SCALES = {
     "EMQ1H": "emq1_scale",
@@ -101,9 +114,6 @@ SCALES = {
     "EMQ3H": "emq3_scale",
     "S1H": "s1h_scale",
 }
-# The chicane slit's element (`htu.lattice`), and the shapes it can have.
-SLIT_ELEMENT = "ChicaneSlitJaws"
-SLITS = ("jaws", "blade", "jaws_blade")
 # Scan016 (HTU, 2026-09-29): chicane, EMQs and steerers off except S1H, magspec dipole not in the
 # line here. The S1H sign convention against the twin's is not validated.
 SCAN016_STATE = {
@@ -113,6 +123,13 @@ SCAN016_STATE = {
     "S1H": -2.7,
     "chicane_current": 0.0,
 }
+# The most lines `_segment` keeps: each is reused within an evaluation (every step's state), and a
+# fit's next evaluation changes the state, so an unbounded cache only grows (13 GB per worker).
+SEGMENT_CACHE = 64
+# The chicane slit's shapes (see the module's docstring).
+SLITS = ("jaws", "blade", "jaws_blade")
+# The chicane slit's element (`htu.lattice`).
+SLIT_ELEMENT = "ChicaneSlitJaws"
 
 
 @dataclasses.dataclass
@@ -151,7 +168,8 @@ def to_spectrometer(
         particles: the source, every particle at the plasma exit (`z` equal, `t` per particle).
         machine_state: twin machine-state keys to set over its defaults (see
             `htu.model.DEFAULT_MACHINE_STATE`), such as `SCAN016_STATE` or `pmq_z_mm`, and
-            SCALES', OFFSETS' and (for "jaws_blade") BLADE_KEYS' keys.
+            SCALES', OFFSETS', PMQ_ERROR_KEYS', PMQ_SCALE_KEY and (for "jaws_blade")
+            BLADE_KEYS' keys.
         reference_mev: the reference energy the beam is tracked at; the particles' mean energy
             if None. Each particle is tracked at its own energy either way (drift-kick-drift),
             but a fixed reference lets repeated calls reuse one built line.
@@ -176,9 +194,19 @@ def to_spectrometer(
         for x, v in OFFSETS.items()
         if v[0] in m or v[1] in m
     )
+    q = float(m.pop(PMQ_SCALE_KEY, 1.0))
+    r = tuple(
+        (i, *(float(m.pop(x, 0.0)) for x in v))
+        for i, v in PMQ_ERROR_KEYS.items()
+        if any(x in m for x in v)
+    )
     # POSIT: the twin's lattice is float32 (htu.lattice builds its tensors with torch defaults)
     e = torch.tensor(
-        float(particles["mean_energy"]) if reference_mev is None else reference_mev * 1e6,
+        (
+            float(particles["mean_energy"])
+            if reference_mev is None
+            else reference_mev * 1e6
+        ),
         dtype=torch.float32,
     )
     b = cheetah.ParticleBeam.from_openpmd_particlegroup(
@@ -193,18 +221,22 @@ def to_spectrometer(
         slit,
         k,
         o,
+        q,
+        r,
     ).elements:
         b = x.track(b)
     return _transported(b, float(particles.charge * 1e12))
-
 
 
 def without_slit(machine_state: dict) -> dict:
     """`machine_state` with the slit out: its jaw keys and BLADE_KEYS dropped (the twin's
     defaults retract the jaws)."""
     return {
-        k: v for k, v in machine_state.items() if not k.startswith("chicane_jaw") and k not in BLADE_KEYS
+        k: v
+        for k, v in machine_state.items()
+        if not k.startswith("chicane_jaw") and k not in BLADE_KEYS
     }
+
 
 class _BladeSlit(cheetah.Aperture):
     """A blade across the beam: blocks `jaw_minus_m` < x < `jaw_plus_m` [m, beam frame]."""
@@ -275,7 +307,9 @@ def _chicane_edges(segment, gap_m: float) -> None:
 
 def _drift(name: str, length: float):
     return cheetah.Drift(
-        length=torch.tensor(float(length)), tracking_method="drift_kick_drift", name=name
+        length=torch.tensor(float(length)),
+        tracking_method="drift_kick_drift",
+        name=name,
     )
 
 
@@ -286,13 +320,22 @@ def _pmq_fringe(elements: list, width_m: float) -> list:
     m, a, z = [], [], 0.0
     for x in elements[i : j + 1]:
         if PMQ_MAGNET.match(x.name):
-            if float(x.tilt) != 0:
-                raise ValueError(f"{x.name} is tilted: its fringe field cannot be sliced")
-            m.append((z, z + float(x.length), float(x.k1), x.misalignment))
+            m.append(
+                (
+                    z,
+                    z + float(x.length),
+                    float(x.k1),
+                    float(x.tilt),
+                    x.misalignment.detach().numpy().astype(float),
+                )
+            )
         elif isinstance(x, cheetah.Aperture):
             a.append((z, x))
         z += float(x.length)
-    lo, hi = m[0][0] - PMQ_FRINGE_EXTENT * width_m, m[-1][1] + PMQ_FRINGE_EXTENT * width_m
+    lo, hi = (
+        m[0][0] - PMQ_FRINGE_EXTENT * width_m,
+        m[-1][1] + PMQ_FRINGE_EXTENT * width_m,
+    )
     if lo < 0 or hi > z:
         raise ValueError(f"fringe width {width_m} m reaches beyond {PMQ_REGION}")
     # the apertures' positions and the region's end exactly, then the regular slice boundaries
@@ -314,19 +357,19 @@ def _pmq_fringe(elements: list, width_m: float) -> list:
     for k, (u, v) in enumerate(zip(g[:-1], g[1:])):
         rv.extend(x for p, x in a if abs(p - u) < 1e-9)
         c = (u + v) / 2
+        q, t, d = _slice(
+            [
+                (q * (_step((c - s) / width_m) - _step((c - e) / width_m)), t, d)
+                for s, e, q, t, d in m
+            ],
+            m[0][4],
+        )
         rv.append(
             cheetah.Quadrupole(
                 length=torch.tensor(float(v - u)),
-                k1=torch.tensor(
-                    float(
-                        sum(
-                            q * (_step((c - s) / width_m) - _step((c - e) / width_m))
-                            for s, e, q, _ in m
-                        )
-                    )
-                ),
-                # POSIT: _apply_machine_state gives the three PMQs one misalignment (the triplet's)
-                misalignment=m[0][3].clone(),
+                k1=torch.tensor(float(q), dtype=torch.float32),
+                misalignment=torch.tensor(d, dtype=torch.float32),
+                tilt=torch.tensor(float(t), dtype=torch.float32),
                 num_steps=1,
                 tracking_method="drift_kick_drift",
                 name=f"PMQFringe{k:03d}",
@@ -336,7 +379,7 @@ def _pmq_fringe(elements: list, width_m: float) -> list:
     return elements[:i] + rv + [_drift("PMQFringeOut", z - hi)] + elements[j + 1 :]
 
 
-@functools.cache
+@functools.lru_cache(maxsize=SEGMENT_CACHE)
 def _segment(
     energy_ev: float,
     machine_state: tuple,
@@ -346,13 +389,16 @@ def _segment(
     slit: str,
     blade: tuple | None,
     offsets: tuple,
+    pmq_scale: float = 1.0,
+    pmq_errors: tuple = (),
 ):
     """The twin's line to END_ELEMENT with `machine_state` (key, value pairs) applied at
     reference `energy_ev`, the PMQ bore apertures moved with the triplet, with `pmq_fringe_mm`
     fringe fields on the PMQs, with `chicane_edges` edges on the chicane dipoles, and the slit
     shaped as `slit` (with `blade`'s edges [mm, lab frame] for "jaws_blade"), and the EMQs in
-    `offsets` ((element, x [mm], y [mm]) triples) offset from the pipe's axis; tracking does not
-    change a line's elements, so a line is reused."""
+    `offsets` ((element, x [mm], y [mm]) triples) offset from the pipe's axis, and the PMQs in
+    `pmq_errors` ((number, roll [deg], x [mm], y [mm])) rolled and offset from the triplet;
+    tracking does not change a line's elements, so a line is reused."""
     import htu.lattice
     import htu.model
 
@@ -370,6 +416,18 @@ def _segment(
             segment=s, energies={x.name: energy_ev for x in s.elements}, machine_state=m
         )
     )
+    g = {i: (a, b, c) for i, a, b, c in pmq_errors}
+    for x in s.elements:
+        if PMQ_MAGNET.match(x.name):
+            # POSIT: _apply_machine_state has set the PMQs' k1 and the triplet's misalignment;
+            # _pmq_fringe reads them, and the tilt, below
+            x.k1 = x.k1 * pmq_scale
+            if int(x.name[3]) in g:
+                a, b, c = g[int(x.name[3])]
+                x.tilt = torch.tensor(numpy.radians(a), dtype=torch.float32)
+                x.misalignment = x.misalignment + torch.tensor(
+                    [b * 1e-3, c * 1e-3], dtype=torch.float32
+                )
     if chicane_edges:
         # POSIT: _apply_machine_state has set the chicane dipoles' angles from chicane_current
         _chicane_edges(s, chicane_gap_m)
@@ -390,9 +448,55 @@ def _segment(
         # POSIT: _apply_machine_state has set the PMQs' k1 at energy_ev and the triplet's offset
         e = _pmq_fringe(e, pmq_fringe_mm * 1e-3)
     return cheetah.Segment(
-        elements=[_ShiftedAperture(x, *d) if PMQ_APERTURE.match(x.name) else x for x in e],
+        elements=[
+            (
+                _ShiftedAperture(
+                    x,
+                    # POSIT: PMQ_APERTURE's names start with their PMQ's ("PMQ2V_APi")
+                    d[0] + g.get(int(x.name[3]), (0, 0, 0))[1] * 1e-3,
+                    d[1] + g.get(int(x.name[3]), (0, 0, 0))[2] * 1e-3,
+                )
+                if PMQ_APERTURE.match(x.name)
+                else x
+            )
+            for x in e
+        ],
         name=s.name,
     )
+
+
+def _slice(fields: list, centre: numpy.ndarray) -> tuple:
+    """(k1, tilt [rad], centre [m]) of the one quadrupole equal to the sum of `fields`, each
+    (k1, tilt [rad], centre [m]); `centre` for a slice with no field.
+
+    In Cheetah's frame (the particle shifted by the centre, then rotated by the tilt) a
+    quadrupole kicks by `-k1 K(tilt) (r - centre)` with `K(t) = [[cos 2t, sin 2t], [sin 2t,
+    -cos 2t]]`. The sum's matrix has the same form: `a = sum k1 cos 2t`, `b = sum k1 sin 2t` give
+    its k1 `sqrt(a^2 + b^2)` and tilt `atan2(b, a) / 2`, and its centre solves `M c = sum k1 K
+    c_i`, where `M^-1 = M / k1^2`. As `K(t - pi/2) = -K(t)`, the tilt is kept within +-pi/4 and
+    k1 takes the sign: untilted PMQs give untilted slices of the summed k1, as without rolls.
+    """
+    a = sum(q * numpy.cos(2 * t) for q, t, _ in fields)
+    b = sum(q * numpy.sin(2 * t) for q, t, _ in fields)
+    k = float(numpy.hypot(a, b))
+    if k < 1e-12:
+        return 0.0, 0.0, centre
+    m = numpy.array([[a, b], [b, -a]])
+    v = sum(
+        q
+        * numpy.array(
+            [
+                [numpy.cos(2 * t), numpy.sin(2 * t)],
+                [numpy.sin(2 * t), -numpy.cos(2 * t)],
+            ]
+        )
+        @ d
+        for q, t, d in fields
+    )
+    t = float(numpy.arctan2(b, a) / 2)
+    if abs(t) > numpy.pi / 4:
+        return -k, t - numpy.copysign(numpy.pi / 2, t), (m @ v) / k**2
+    return k, t, (m @ v) / k**2
 
 
 def _slit_blade(elements: list, jaw1_mm: float, blade: tuple) -> list:
@@ -425,7 +529,8 @@ def _transported(beam, source_charge_pc: float) -> Transported:
     """The outgoing beam as arrays; angles are px/pz, using each particle's own momentum."""
     p = (beam.momenta / beam.p0c).detach().numpy()
     return Transported(
-        charge_pc=(beam.particle_charges * beam.survival_probabilities).detach().numpy() * 1e12,
+        charge_pc=(beam.particle_charges * beam.survival_probabilities).detach().numpy()
+        * 1e12,
         energy_mev=beam.energies.detach().numpy() / 1e6,
         source_charge_pc=source_charge_pc,
         x_mm=beam.x.detach().numpy() * 1e3,

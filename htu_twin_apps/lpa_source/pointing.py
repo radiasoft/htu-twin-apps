@@ -153,7 +153,10 @@ def fit(
         if v[2] <= 0:
             return 1e9
         rv = score(
-            scans, predict(_source(s, v), scans, {**m, "pmq_y_mm": v[1]}, emq_sign, projection)
+            scans,
+            predict(
+                _source(s, v), scans, {**m, "pmq_y_mm": v[1]}, emq_sign, projection
+            ),
         )
         seen.append((float(rv[0]), list(map(float, v))))
         if log:
@@ -174,13 +177,16 @@ def fit(
                 "maxfev": max_evaluations,
                 "xatol": 0.02,
                 "fatol": 2.0,
-                "initial_simplex": numpy.vstack([x, x + numpy.diag([0.5, 0.3, 0.3 * x[2]])]),
+                "initial_simplex": numpy.vstack(
+                    [x, x + numpy.diag([0.5, 0.3, 0.3 * x[2]])]
+                ),
             },
         )
         rv.append({"start": x.tolist(), "chi2": float(r.fun), "values": r.x.tolist()})
     b = min(rv, key=lambda r: r["chi2"])["values"]
     c, d, k = score(
-        scans, predict(_source(s, b), scans, {**m, "pmq_y_mm": b[1]}, emq_sign, projection)
+        scans,
+        predict(_source(s, b), scans, {**m, "pmq_y_mm": b[1]}, emq_sign, projection),
     )
     n = 4 * sum(len(v) for v in scans.values())
     return PointingFit(
@@ -196,22 +202,28 @@ def fit(
     )
 
 
-def measured(data: pathlib.Path, scan: str) -> list:
+def measured(
+    data: pathlib.Path, scan: str, axis_start_mev: float | None = None
+) -> list:
     """The steps of `scan` (a scan folder name, such as `Scan025`) found below `data`."""
     f, rows = htu_scans.table(data, scan)
     n = htu_scans.step_numbers(rows)
     k = sorted(set(n))
-    c = {x: [_profiles(f, rows, x, n, i) for i in k] for x in CAMERAS}
+    c = {x: [_profiles(f, rows, x, n, i, axis_start_mev) for i in k] for x in CAMERAS}
     return [
         Step(
             cameras={x: c[x][j] for x in CAMERAS},
-            machine_state=htu_scans.machine_state([r for r, m in zip(rows, n) if m == i]),
+            machine_state=htu_scans.machine_state(
+                [r for r, m in zip(rows, n) if m == i]
+            ),
         )
         for j, i in enumerate(k)
     ]
 
 
-def plot(scans: dict, result: PointingFit, path: pathlib.Path, emq_sign: int = 1) -> None:
+def plot(
+    scans: dict, result: PointingFit, path: pathlib.Path, emq_sign: int = 1
+) -> None:
     """Each scan's measured centroid and rms per camera against the fit's (scaled) prediction."""
     import matplotlib
 
@@ -225,7 +237,9 @@ def plot(scans: dict, result: PointingFit, path: pathlib.Path, emq_sign: int = 1
         emq_sign,
         "spectrometer" if result.projection == "spectrometer" else "stand-in",
     )
-    f, ax = matplotlib.pyplot.subplots(4, len(scans), figsize=(5 * len(scans), 13), squeeze=False)
+    f, ax = matplotlib.pyplot.subplots(
+        4, len(scans), figsize=(5 * len(scans), 13), squeeze=False
+    )
     for j, (n, steps) in enumerate(scans.items()):
         x = [_stepped(steps, s) for s in steps]
         for i, cam in enumerate(CAMERAS):
@@ -233,7 +247,12 @@ def plot(scans: dict, result: PointingFit, path: pathlib.Path, emq_sign: int = 1
             q = [v[cam][result.projection] for v in p[n]]
             for k, (y, e, z, t) in enumerate(
                 (
-                    ("centroid", "centroid_error", [a * v[0] + b for v in q], "centroid"),
+                    (
+                        "centroid",
+                        "centroid_error",
+                        [a * v[0] + b for v in q],
+                        "centroid",
+                    ),
                     ("rms", "rms_error", [numpy.hypot(a * v[1], r0) for v in q], "rms"),
                 )
             ):
@@ -280,7 +299,11 @@ def predict(
     if projection not in PROJECTIONS:
         raise ValueError(f"projection {projection!r} not one of {PROJECTIONS}")
 
-    g = lpa_source.particles(source) if isinstance(source, lpa_source.LPASource) else source
+    g = (
+        lpa_source.particles(source)
+        if isinstance(source, lpa_source.LPASource)
+        else source
+    )
     rv = {}
     for n, steps in scans.items():
         rv[n] = []
@@ -402,19 +425,25 @@ def _camera_fits(scans: dict, predictions: dict, camera: str, d: float):
     return rv
 
 
-
-
 def _moments(values: numpy.ndarray, weights: numpy.ndarray) -> tuple:
     """(centroid, rms) of `values` with `weights`; NaN for no weight."""
     if values.size == 0 or weights.sum() <= 0:
         return (numpy.nan, numpy.nan)
     c = numpy.average(values, weights=weights)
-    return (float(c), float(numpy.sqrt(numpy.average((values - c) ** 2, weights=weights))))
+    return (
+        float(c),
+        float(numpy.sqrt(numpy.average((values - c) ** 2, weights=weights))),
+    )
 
 
-
-
-def _profiles(folder: pathlib.Path, rows: list, camera: str, steps: list, step: int) -> Profile:
+def _profiles(
+    folder: pathlib.Path,
+    rows: list,
+    camera: str,
+    steps: list,
+    step: int,
+    axis_start_mev: float | None = None,
+) -> Profile:
     """`camera`'s profile and spectrum for one step, from its two stacks in the scan folder."""
     d, e = (
         htu_scans.stack(folder, f"UC_BCaveMagSpec{camera}-{k}", rows)
@@ -422,7 +451,9 @@ def _profiles(folder: pathlib.Path, rows: list, camera: str, steps: list, step: 
     )
     i = [j for j, n in enumerate(steps) if n == step and d[1][j] >= 0 and e[1][j] >= 0]
     if not i:
-        raise ValueError(f"{folder.name} step {step}: no shot with both {camera} stacks")
+        raise ValueError(
+            f"{folder.name} step {step}: no shot with both {camera} stacks"
+        )
     x = d[0][0, :, 0]
     y = numpy.clip(d[0][[d[1][j] for j in i], :, 1], 0, None)
     m = y.mean(axis=0)
@@ -435,7 +466,7 @@ def _profiles(folder: pathlib.Path, rows: list, camera: str, steps: list, step: 
         angle_range=(float(x.min()), float(x.max())),
         centroid=c,
         centroid_error=float(pc.std() / numpy.sqrt(k.sum())),
-        energy_mev=e[0][0, :, 0],
+        energy_mev=htu_scans.energy_axis(folder, camera, axis_start_mev),
         rms=float(numpy.sqrt((m * (x - c) ** 2).sum() / m.sum())),
         rms_error=float(pr.std() / numpy.sqrt(k.sum())),
         spectrum=numpy.clip(e[0][[e[1][j] for j in i], :, 1], 0, None).mean(axis=0),
@@ -452,9 +483,14 @@ def _projected(transported, profile: Profile, projection: str, field_t: float) -
         & (transported.energy_mev < e.max())
     )
     b = numpy.arange(e.min(), e.max() + ENERGY_BIN_MEV, ENERGY_BIN_MEV)
-    h, _ = numpy.histogram(transported.energy_mev[a], b, weights=transported.charge_pc[a])
+    h, _ = numpy.histogram(
+        transported.energy_mev[a], b, weights=transported.charge_pc[a]
+    )
     r = numpy.where(
-        h > 0, numpy.interp((b[1:] + b[:-1]) / 2, e, profile.spectrum) / numpy.where(h > 0, h, 1), 0
+        h > 0,
+        numpy.interp((b[1:] + b[:-1]) / 2, e, profile.spectrum)
+        / numpy.where(h > 0, h, 1),
+        0,
     )
     i = numpy.clip(numpy.digitize(transported.energy_mev[a], b) - 1, 0, r.size - 1)
     w = transported.charge_pc[a] * r[i]
@@ -465,7 +501,8 @@ def _projected(transported, profile: Profile, projection: str, field_t: float) -
             k = (y >= profile.angle_range[0]) & (y <= profile.angle_range[1])
         return {"spectrometer": _moments(y[k], w[k])}
     return {
-        d: _moments(transported.y_mm[a] + d * transported.yp_mrad[a], w) for d in DISTANCES_M
+        d: _moments(transported.y_mm[a] + d * transported.yp_mrad[a], w)
+        for d in DISTANCES_M
     }
 
 
@@ -474,7 +511,9 @@ def _ranges(seen: list, chi2: float, measured_numbers: int) -> dict:
     # POSIT: 6 nuisance parameters (a, b, r0 per camera in CAMERAS) and FIT_NAMES are fitted
     s = max(chi2 / (measured_numbers - 6 - len(FIT_NAMES)), 1.0) * RANGE_CHI2
     v = numpy.array([x for c, x in seen if c <= chi2 + s])
-    return {n: (float(v[:, i].min()), float(v[:, i].max())) for i, n in enumerate(FIT_NAMES)}
+    return {
+        n: (float(v[:, i].min()), float(v[:, i].max())) for i, n in enumerate(FIT_NAMES)
+    }
 
 
 def _source(source, values):
@@ -495,10 +534,6 @@ def _spectrometer() -> tuple:
     p, t = h.index("momentum [MeV/c]"), h.index("total path [m]")
     v = numpy.array([[float(x[p]), float(x[t])] for x in r[1:]])
     return htu.magspec.DutchCalibration(), v[:, 0], v[:, 1]
-
-
-
-
 
 
 def _stepped(steps: list, step: Step) -> float:

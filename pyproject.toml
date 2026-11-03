@@ -38,6 +38,7 @@ lpa-source = [
 [project.scripts]
 htu-lpa-source = "htu_twin_apps.lpa_source.compare:main"
 htu-shot-viewer = "htu_twin_apps.shot_viewer.server:main"
+htu-twin-viewer = "htu_twin_apps.twin_viewer.server:main"
 
 [project.urls]
 Homepage = "https://github.com/radiasoft/htu-twin-apps"

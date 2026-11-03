@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HTU Twin Viewer</title>
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js"></script>
+</head>
+<body>
+<header>
+  <h1>HTU twin viewer</h1>
+  <p class="muted" id="source"></p>
+  <span id="status" role="status"></span>
+</header>
+<main>
+  <section class="synoptic" aria-label="Beamline synoptic">
+    <h2>Beamline <span class="muted">(the twin's values at this step; the scanned element is outlined)</span></h2>
+    <div class="synoptic-scroll"><svg id="synoptic" role="img" aria-label="HTU electron line, in beam order"></svg></div>
+  </section>
+
+  <section aria-label="Twin output against the measurement">
+    <h2>Twin against the data</h2>
+    <div id="plots" class="plots"></div>
+  </section>
+
+  <section id="controls" class="controls" aria-label="Dataset and step">
+    <label>Dataset
+      <select id="dataset" aria-label="Dataset"></select>
+    </label>
+    <label class="slider">Step <span id="step-label">1</span>
+      <input id="step" type="range" min="0" max="0" value="0" aria-label="Step">
+    </label>
+    <span id="stitch" class="stitch" hidden>Camera seam:
+      <label><input id="stitch-scale" type="checkbox" checked> scale each to its spectrum</label>
+      <label><input id="stitch-align" type="checkbox" checked> align Cam2 to Cam1</label>
+    </span>
+    <button id="reset" type="button" disabled>No edits</button>
+  </section>
+
+  <section aria-label="Values">
+    <h2>Values</h2>
+    <div class="tables">
+      <div>
+        <h3>Compared</h3>
+        <table id="numbers"><thead><tr><th>Quantity</th><th>Measured</th><th>Twin</th></tr></thead><tbody></tbody></table>
+      </div>
+      <div>
+        <h3>Settings <span class="muted">(edit a value the twin ran with and press Enter to rerun it; edits stay as you move through steps and datasets)</span></h3>
+        <table id="settings"><thead><tr><th>Element</th><th>Logged</th><th>Twin ran with</th><th>Correction</th></tr></thead><tbody></tbody></table>
+      </div>
+    </div>
+  </section>
+</main>
+<script src="app.js"></script>
+</body>
+</html>

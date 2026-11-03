@@ -34,10 +34,21 @@ DEFAULT_BOUNDS = {
     "emq2_x_mm": (-5.0, 5.0),
     "emq2_y_mm": (-5.0, 5.0),
     "emq3_scale": (-1.5, 1.5),
+    "energy_label_scale": (0.7, 1.3),
     "energy_mev": (20.0, 150.0),
     "energy_sigma_mev": (0.5, 80.0),
     "energy_tail_mev": (1.0, 150.0),
     "magspec_b": (0.4, 1.2),
+    "pmq1_dx_mm": (-1.0, 1.0),
+    "pmq1_dy_mm": (-1.0, 1.0),
+    "pmq1_roll_deg": (-5.0, 5.0),
+    "pmq2_dx_mm": (-1.0, 1.0),
+    "pmq2_dy_mm": (-1.0, 1.0),
+    "pmq2_roll_deg": (-5.0, 5.0),
+    "pmq3_dx_mm": (-1.0, 1.0),
+    "pmq3_dy_mm": (-1.0, 1.0),
+    "pmq3_roll_deg": (-5.0, 5.0),
+    "pmq_scale": (0.7, 1.3),
     "pmq_x_mm": (-3.0, 3.0),
     "pmq_y_mm": (-3.0, 3.0),
     "pmq_z_mm": (-15.0, 15.0),
@@ -82,7 +93,9 @@ def check(fit: Fit, measured, seeds=(2, 3, 4, 5)) -> numpy.ndarray:
     """The fitted source's `distance` resampled with other seeds: its sampling noise."""
     return numpy.array(
         [
-            _distance(dataclasses.replace(fit.source, seed=s), fit.machine_state, measured)
+            _distance(
+                dataclasses.replace(fit.source, seed=s), fit.machine_state, measured
+            )
             for s in seeds
         ]
     )
@@ -144,7 +157,9 @@ def knobs(source, machine_state: dict, names) -> numpy.ndarray:
     u = [n for n in names if n not in s and n not in m]
     if u:
         raise KeyError(f"not LPASource knobs or twin machine-state keys: {u}")
-    return numpy.array([getattr(source, n) if n in s else m[n] for n in names], dtype=float)
+    return numpy.array(
+        [getattr(source, n) if n in s else m[n] for n in names], dtype=float
+    )
 
 
 def minimize(

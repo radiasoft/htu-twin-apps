@@ -163,7 +163,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
         )
 
     def _error(self, status, message):
-        self._send(json.dumps({"error": message}).encode(), "application/json", status=status)
+        self._send(
+            json.dumps({"error": message}).encode(), "application/json", status=status
+        )
 
     def _json(self, value):
         self._send(json.dumps(value, allow_nan=False).encode(), "application/json")
@@ -178,7 +180,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _static(self, path):
-        f = (STATIC / ("index.html" if path in ("", "/") else path.lstrip("/"))).resolve()
+        f = (
+            STATIC / ("index.html" if path in ("", "/") else path.lstrip("/"))
+        ).resolve()
         if f.parent != STATIC or not f.is_file():
             raise KeyError(path)
         self._send(f.read_bytes(), mimetypes.guess_type(f.name)[0] or "text/plain")
@@ -240,7 +244,9 @@ class Scan:
             key=lambda v: sum(1 for t in v if t),
             default=[None] * len(self.rows),
         )
-        return [t - htu_twin_apps.stacks.LABVIEW_EPOCH_OFFSET_S if t else None for t in b]
+        return [
+            t - htu_twin_apps.stacks.LABVIEW_EPOCH_OFFSET_S if t else None for t in b
+        ]
 
 
 def main():
@@ -293,13 +299,17 @@ def scan_tables() -> dict[str, pathlib.Path]:
         m = ANALYSIS_TABLE.match(t.name)
         if m and t.parent.name == "analysis":
             d = t.parent.parent.name
-            found.setdefault((d, int(m.group(1))), (f"{d}/Scan{int(m.group(1)):03d}", t))
+            found.setdefault(
+                (d, int(m.group(1))), (f"{d}/Scan{int(m.group(1)):03d}", t)
+            )
     return {i: t for _, (i, t) in sorted(found.items())}
 
 
 def _clean(values) -> list:
     """`values` as nested lists of floats, with NaN and infinities as None (JSON has neither)."""
-    return _nan_to_none(numpy.round(numpy.asarray(values, dtype=numpy.float64), 6).tolist())
+    return _nan_to_none(
+        numpy.round(numpy.asarray(values, dtype=numpy.float64), 6).tolist()
+    )
 
 
 def _device(s: Scan, path: pathlib.Path) -> Device | None:
@@ -361,7 +371,9 @@ def _read_info(folder: pathlib.Path) -> dict[str, str]:
     p = configparser.ConfigParser(interpolation=None)
     p.optionxform = str  # keep the keys' case
     p.read(f[0])
-    return {k: v.strip('"') for k, v in p["Scan Info"].items()} if "Scan Info" in p else {}
+    return (
+        {k: v.strip('"') for k, v in p["Scan Info"].items()} if "Scan Info" in p else {}
+    )
 
 
 def _read_table(path: pathlib.Path) -> tuple[list[str], list[list[str]]]:

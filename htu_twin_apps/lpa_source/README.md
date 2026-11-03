@@ -56,6 +56,29 @@ triplet's y and z to Scan016's spectrum and Scans 025 and 028's vertical profile
 028 held fixed. The objective is the profiles' chi^2 plus `(distance / 0.01) ** 2` of the
 spectrum. About 40 s an evaluation, many hours a fit.
 
+`--slit jaws_blade` adds a blade inside the jaws (`slit_blade_low_mm`, `slit_blade_high_mm`),
+which Scan019's narrow notch needs; `--slit-knobs` narrows the fit to the slit's own edges.
+
+`--aline` fits the beam's path to the A-line camera's EMQ scans (Scans 023 and 026 on
+`UC_ALineEBeam3`, each step's spectrum from its spectrometer partner, Scans 025 and 028) and
+Scan019 together (`aline.py`): the model is rendered and measured as the camera's frames are
+(pixel size `aline_um_per_px` fitted, a 2 px blur, a 10% threshold), the camera's zeros and a
+resolution floor fitted per evaluation. `--aline-knobs` chooses the knobs; `--workers` tracks
+the steps in parallel (each with `--threads`). Many hours a fit.
+
+`--profiles` fits the spectrometer EMQ scans' energy-resolved vertical profiles
+(`energy_profiles.py`: `-ImageInterp` in 5 MeV slices), with `--profiles-spectrum` adding
+Scan016's spectrum and `--profiles-knobs` choosing the knobs.
+
+`--energy-reference early|late` picks which of the spectrometer driver's two field settings is
+taken as right for every scan's energy axis (`scans.energy_axis`): the driver's axis in Scans
+025 to 030 is Scan020's scaled by 0.833 and 0.824 while the beam stays on the same pixels.
+`early` (the default) is the one the fits favour.
+
+`python -m htu_twin_apps.lpa_source.aline_vertical <data> --source <saved>` (`aline_vertical.py`)
+fits the A-line objective and the spectrometer EMQ scans' vertical profiles together, one set of
+knobs for both (`--scale free`, the default, fits each camera's scale; a number fixes it).
+
 `--log FILE` appends every evaluation of every fit to `FILE`, one JSON object a line, so a long
 run can be followed and its best point recovered if it dies; every tenth is also printed.
 
@@ -81,7 +104,11 @@ run can be followed and its best point recovered if it dies; every tenth is also
   `htu.model._apply_machine_state`. `SCAN016_STATE` is Scan016's: chicane, EMQs and steerers off
   except S1H at -2.7 A, whose sign convention against the twin's is not validated.
 
-  Three changes to the twin's line. First, the PMQs get fringe fields
+  Changes to the twin's line (all listed in `twin.py`'s docstring): the slit's shapes, magnet
+  strength scales (`SCALES`), EMQ offsets (`OFFSETS`), a PMQ strength scale, per-PMQ rolls and
+  offsets (`PMQ_ERROR_KEYS`, from Sam Barber's bench measurements), and the three below. The
+  line built for a machine state is cached (`SEGMENT_CACHE` lines). First, the PMQs get fringe
+  fields
   (`to_spectrometer(pmq_fringe_mm=3.0)`, the default; None keeps the twin's hard-edged PMQs). The
   PMQs are 16 to 29 mm long with a 6 mm bore radius, so their fringe is a large part of them.
   Each PMQ's gradient steps up and down as a logistic of width `pmq_fringe_mm` centred on the
@@ -275,6 +302,10 @@ correlated along a valley.
 
 - Horizontal pointing and the PMQ triplet's horizontal and longitudinal position (`pmq_x_mm`,
   `pmq_z_mm`), which no measurement used here constrains.
-- A pointing fit through the spectrometer model (`--pointing-projection spectrometer`, the
-  default since 2026-10-30): the fit above used the stand-in.
+- The vertical plane: the A-line scans need the EMQ fields 0.6 to 0.9 mm off the beam vertically,
+  which the spectrometer scans' vertical profiles do not show, and through the spectrometer
+  model the fitted camera scale is -0.07 to -0.26 where 1 is expected. The fits' results after
+  2026-10-30 are in `~/save/inversion/fits/README.md`, and what to run next in
+  `~/save/inversion/next-steps.md`.
+- Tests: none yet.
 - Shot-to-shot spread: averages are compared, not single shots.

@@ -61,16 +61,29 @@ class JointFit:
     values: dict
 
 
-def evaluate(spectrum, train: dict, source, machine_state: dict, projection: str) -> tuple:
+def evaluate(
+    spectrum, train: dict, source, machine_state: dict, projection: str
+) -> tuple:
     """(objective, parts) of `source` and `machine_state` (see the module's docstring)."""
-    from htu_twin_apps.lpa_source import compare, fit, pointing, source as lpa_source, twin
+    from htu_twin_apps.lpa_source import (
+        compare,
+        fit,
+        pointing,
+        source as lpa_source,
+        twin,
+    )
 
     g = lpa_source.particles(source)
     c, k, cams = pointing.score(
         train, pointing.predict(g, train, machine_state, projection=projection)
     )
     if spectrum is None:
-        return c, {"cameras": cams, "pointing_chi2": c, "projection": k, "spectrum_distance": None}
+        return c, {
+            "cameras": cams,
+            "pointing_chi2": c,
+            "projection": k,
+            "spectrum_distance": None,
+        }
     try:
         d = compare.compare(
             twin.to_spectrometer(
@@ -158,6 +171,7 @@ def fit(
         parts=p,
         source=dataclasses.replace(f[0], num_particles=source.num_particles),
         start_objective=_objective(x0),
-        training_numbers=4 * sum(len(v) for v in train.values()) + (spectrum is not None),
+        training_numbers=4 * sum(len(v) for v in train.values())
+        + (spectrum is not None),
         values=dict(zip(names, map(float, x))),
     )

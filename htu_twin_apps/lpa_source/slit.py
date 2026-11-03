@@ -82,23 +82,29 @@ class SlitStep:
 
 def distances(steps: list, source, machine_state: dict, slit: str) -> numpy.ndarray:
     """Each step's distance between its measured spectrum and the source's, tracked with the
-    step's settings, `machine_state` over them, and `slit`; 1 for no charge in the window."""
+    step's settings, `machine_state` over them, and `slit`; 1 for no charge in the window.
+    """
     from htu_twin_apps.lpa_source import compare, fit, source as lpa_source, twin
 
-    g = lpa_source.particles(source) if isinstance(source, lpa_source.LPASource) else source
+    g = (
+        lpa_source.particles(source)
+        if isinstance(source, lpa_source.LPASource)
+        else source
+    )
     rv = []
     for s in steps:
         t = twin.to_spectrometer(
-            g, {**s.machine_state, **machine_state}, reference_mev=fit.REFERENCE_MEV, slit=slit
+            g,
+            {**s.machine_state, **machine_state},
+            reference_mev=fit.REFERENCE_MEV,
+            slit=slit,
         )
         try:
             d = compare.spectrum(t, s.energy_mev)[0]
         except ValueError:
             rv.append(1.0)
             continue
-        rv.append(
-            0.5 * float(numpy.abs(d - s.density).sum() * compare.ENERGY_STEP_MEV)
-        )
+        rv.append(0.5 * float(numpy.abs(d - s.density).sum() * compare.ENERGY_STEP_MEV))
     return numpy.array(rv)
 
 
@@ -136,7 +142,9 @@ def fit(
     if slit == "jaws_blade":
         names = tuple(names) + tuple(x for x in twin.BLADE_KEYS if x not in names)
     x, d, n = lpa_fit.minimize(
-        lambda v: distances(steps, *lpa_fit.apply(s, machine_state, names, v), slit).mean(),
+        lambda v: distances(
+            steps, *lpa_fit.apply(s, machine_state, names, v), slit
+        ).mean(),
         lpa_fit.knobs(s, machine_state, names),
         names,
         bounds=bounds,
@@ -147,7 +155,9 @@ def fit(
     f = lpa_fit.apply(source, machine_state, names, x)
     return SlitFit(
         distance=d,
-        distances=distances(steps, *lpa_fit.apply(s, machine_state, names, x), slit).tolist(),
+        distances=distances(
+            steps, *lpa_fit.apply(s, machine_state, names, x), slit
+        ).tolist(),
         evaluations=n,
         machine_state=f[1],
         names=tuple(names),
@@ -158,15 +168,19 @@ def fit(
     )
 
 
-def measured(data: pathlib.Path, scan: str = SCAN) -> list:
-    """The steps of `scan` found below `data`: stitched spectra and settings."""
+def measured(
+    data: pathlib.Path, scan: str = SCAN, axis_start_mev: float | None = None
+) -> list:
+    """The steps of `scan` found below `data`: stitched spectra and settings. `axis_start_mev`: as for `scans.energy_axis`."""
     from htu_twin_apps.lpa_source import compare
 
     f, rows = htu_scans.table(data, scan)
     n = htu_scans.step_numbers(rows)
     c = [htu_scans.stack(f, f"UC_BCaveMagSpec{x}-interpSpec", rows) for x in CAMERAS]
     # POSIT: each camera's -interpSpec frames share one energy axis (column 0) in a scan
-    x = numpy.concatenate([a[0, :, 0] for a, _ in c])
+    x = numpy.concatenate(
+        [htu_scans.energy_axis(f, n, axis_start_mev) for n in CAMERAS]
+    )
     o = numpy.argsort(x, kind="stable")
     k = round(compare.ENERGY_STEP_MEV / compare.MEASURED_STEP_MEV)
     e = numpy.arange(x.min(), x.max(), compare.MEASURED_STEP_MEV)
@@ -208,7 +222,9 @@ def plot(steps: list, result: SlitFit, path: pathlib.Path) -> None:
             slit=result.slit,
         )
         a.plot(s.energy_mev, s.density, "k", lw=1.5, label="measured")
-        a.plot(s.energy_mev, compare.spectrum(t, s.energy_mev)[0], "r", lw=1, label="twin")
+        a.plot(
+            s.energy_mev, compare.spectrum(t, s.energy_mev)[0], "r", lw=1, label="twin"
+        )
         a.set_xlim(55, 160)
         a.set_title(
             f"{s.machine_state['chicane_current']:.3f} A, distance {d:.2f}", fontsize=9
