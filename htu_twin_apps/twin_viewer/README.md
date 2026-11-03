@@ -20,15 +20,16 @@ the fitted pixel size.*
 Install the repository (see the [top-level README](../../README.md)), then:
 
 ```bash
-htu-twin-viewer <data directory>        # or set $HTU_DATA
+htu-twin-viewer <data directory> --source <fitted twin values json file>
+```
+
+Ex.
+```bash
+htu-twin-viewer ~/htu-sample-data/ --source twin-fit-values.json --port 8010
 ```
 
 Open <http://127.0.0.1:8060>. Options: `--port N`, `--particles N` (default 20000), `--threads N`
-(torch threads, default 2), `--source FILE` (a fit's saved source JSON) and `--fits DIR` (where the
-source is looked for, default `~/save/inversion/fits`). Without `--source`, the first of
-`aline_axis_source.json`, `aline_image_source.json` and `aline_offsets_source.json` found in the
-fits directory is used. `?scan=Scan025` in the URL opens that dataset. The page loads Plotly from
-cdn.jsdelivr.net.
+(torch threads, default 2), `--source FILE` (a fit's saved source JSON).
 
 The server listens on all interfaces (so a VM's forwarded port works); it has no access control.
 
