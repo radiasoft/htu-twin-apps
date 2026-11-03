@@ -1,10 +1,9 @@
 """HTU twin viewer: step through a recorded HTU scan and see the twin's prediction beside the data.
 
-Run `htu-twin-viewer [data directory] [--fits DIR] [--port N]` and open http://127.0.0.1:8060. The
+Run `htu-twin-viewer [data directory] --source twin-fit-values.json [--port N]` and open http://127.0.0.1:8060. The
 data directory is the argument, or `$HTU_DATA` without one. The twin is `geecs-lume-twin` as
 `htu_twin_apps.lpa_source` drives it (its PMQ fringe fields, the slit's jaws and blade, the fitted
-calibration corrections), with the LPA source and corrections of the best fit in the fits
-directory (`--source`, or the first of SOURCES found there).
+calibration corrections), with the LPA source and corrections of the best fit.
 
 Each dataset (DATASETS) is a recorded scan with raw data; its steps are the scan's steps. For a
 step, the twin is run with the step's logged settings and the fit's corrections, and its output is
@@ -47,6 +46,7 @@ import urllib.parse
 
 from htu_twin_apps.lpa_source import scans as htu_scans
 
+# TODO(pjm): this should be metadata input
 # The recorded scans the viewer offers, by scan folder name: what kind of comparison, and a title.
 DATASETS = {
     "Scan016": ("scan016", "Long noscan: chicane, EMQs and slit out (spectrum)"),
@@ -84,12 +84,6 @@ MAX_IMAGE_SIDE = 160
 PARTICLES = 20_000
 # The energy [MeV] either side of the cameras' seam whose AngleAxis centroids align them.
 SEAM_WINDOW_MEV = 4.0
-# The fit results tried, in order, for the source and corrections when --source is not given.
-SOURCES = (
-    "aline_axis_source.json",
-    "aline_image_source.json",
-    "aline_offsets_source.json",
-)
 # The source's knobs an edit may replace (`source.<knob>`), with their labels and units.
 SOURCE_KNOBS = {
     "divergence_x_mrad": ("divergence x", "mrad"),
@@ -341,12 +335,6 @@ def main():
     p.add_argument(
         "data", nargs="?", default=os.environ.get("HTU_DATA"), type=pathlib.Path
     )
-    p.add_argument(
-        "--fits",
-        type=pathlib.Path,
-        default=pathlib.Path.home() / "save/inversion/fits",
-        help="the fits directory, where the source is looked for (default ~/save/inversion/fits)",
-    )
     p.add_argument("--source", type=pathlib.Path, help="the fit's saved source (JSON)")
     p.add_argument("--particles", type=int, default=PARTICLES)
     p.add_argument("--port", type=int, default=DEFAULT_PORT)
@@ -354,9 +342,9 @@ def main():
     a = p.parse_args()
     if a.data is None:
         p.error("give the data directory, or set $HTU_DATA")
-    s = a.source or next((a.fits / x for x in SOURCES if (a.fits / x).exists()), None)
+    s = a.source
     if s is None:
-        p.error(f"no source: give --source, or put one of {SOURCES} in {a.fits}")
+        p.error(f"no source: give --source")
     import torch
 
     torch.set_num_threads(a.threads)

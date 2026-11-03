@@ -305,7 +305,5 @@ correlated along a valley.
 - The vertical plane: the A-line scans need the EMQ fields 0.6 to 0.9 mm off the beam vertically,
   which the spectrometer scans' vertical profiles do not show, and through the spectrometer
   model the fitted camera scale is -0.07 to -0.26 where 1 is expected. The fits' results after
-  2026-10-30 are in `~/save/inversion/fits/README.md`, and what to run next in
-  `~/save/inversion/next-steps.md`.
 - Tests: none yet.
 - Shot-to-shot spread: averages are compared, not single shots.

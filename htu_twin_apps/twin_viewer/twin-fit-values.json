@@ -1,0 +1,39 @@
+{
+ "source": {
+  "charge_pc": 447.3034221559061,
+  "divergence_power": 1.4141638860292645,
+  "divergence_x_mrad": 7.6876926188819885,
+  "divergence_y_mrad": 1.3208504059137913,
+  "duration_fs": 18.091086322156666,
+  "energy_mev": 52.65982403331353,
+  "energy_min_mev": 15.329968499999998,
+  "energy_sigma_mev": 43.138823385667465,
+  "energy_tail_mev": 27.7036777540714,
+  "num_particles": 50000,
+  "pointing_slope_x_mrad": -4.0740265100343755,
+  "pointing_slope_y_mrad": 0.007323578096932748,
+  "pointing_x_mrad": -2.7313241703241395,
+  "pointing_y_mrad": -0.08528654963760063,
+  "reference_mev": 100.0,
+  "seed": 1,
+  "size_x_um": 3.263802905219534,
+  "size_y_um": 1.775703791293906
+ },
+ "machine_state": {
+  "chicane_jaw1_mm": 6.135592200823424,
+  "chicane_jaw2_mm": -20.0,
+  "slit_blade_high_mm": 4.069224564505648,
+  "slit_blade_low_mm": 2.471518922445545,
+  "emq1_scale": 1.0706793706692057,
+  "emq2_scale": 1.2836963751317017,
+  "s1h_scale": 0.0726524484382801,
+  "emq1_x_mm": 1.3786963473444867,
+  "emq1_y_mm": 0.6910964459261677,
+  "emq2_x_mm": 1.1076695976580995,
+  "emq2_y_mm": 0.5977205421764626,
+  "pmq_y_mm": -0.007596354892107648,
+  "pmq_z_mm": 0.014069990024336735,
+  "pmq_x_mm": 0.0827260813946438,
+  "aline_um_per_px": 79.28457572805355
+ }
+}

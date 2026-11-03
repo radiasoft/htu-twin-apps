@@ -220,7 +220,12 @@ function selectDataset(scan) {
 let timer = null;
 
 async function init() {
+  $("status").textContent = "Loading datasets…";
   const v = await api("/api/datasets");
+  if (! v.datasets || ! v.datasets.length) {
+    $("status").textContent = "Error loading datasets";
+    return;
+  }
   state.datasets = v.datasets;
   $("source").textContent = `Twin: geecs-lume-twin with the fitted LPA source and corrections from ${v.source}`;
   $("dataset").innerHTML = v.datasets
