@@ -28,6 +28,10 @@ Ex.
 htu-twin-viewer ~/htu-sample-data/ --source twin-fit-values.json --port 8010
 ```
 
+`twin-fit-values.json` is the result of the 17-step fit chain traced in
+[`lpa_source/provenance`](../lpa_source/provenance/slit_a_rescore_provenance.md), which also has a
+script that reruns it.
+
 Open <http://127.0.0.1:8060>. Options: `--port N`, `--particles N` (default 20000), `--threads N`
 (torch threads, default 2), `--source FILE` (a fit's saved source JSON).
 
