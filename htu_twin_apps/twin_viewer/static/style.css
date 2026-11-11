@@ -76,8 +76,10 @@ section { background: var(--surface-1); border: 1px solid var(--border); border-
 #synoptic .beam { stroke: var(--text-muted); stroke-width: 1.5; }
 #synoptic .el { fill: var(--surface-0); stroke: var(--text-muted); stroke-width: 1; }
 #synoptic .el.scanned { stroke: var(--accent); stroke-width: 3; }
-.plots { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 12px; }
-.plot { height: 360px; }
+.plots { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
+.plot { height: 360px; flex: 1 1 340px; max-width: 560px; min-width: 0; }
+/* the camera images sit side by side in the middle, each as wide as its pixels need (app.js sets it) */
+.plot.image { flex: 0 0 auto; }
 .tables { display: grid; grid-template-columns: 1fr; gap: 18px; }
 #numbers { max-width: 640px; }
 table { border-collapse: collapse; width: 100%; font-size: 13px; }
@@ -98,5 +100,14 @@ tr.scanned td:first-child { color: var(--accent); font-weight: 600; }
 #settings th:nth-child(3) { width: 52%; }
 @media (max-width: 900px) { #settings { table-layout: auto; } #settings th { width: auto; } }
 .stitch { display: flex; gap: 10px; align-items: center; color: var(--text-secondary); }
-.stitch[hidden] { display: none; }
+.stitch[hidden], .controls label[hidden] { display: none; }
 .stitch label { gap: 4px; }
+/* A very wide page: the Values panel goes beside the plots and stays in view while they scroll. It is
+   1400px wide, and the page is 2848px (1400 + 1400 + the gap and side gutters) when the two sides are
+   equal; a wider page only widens the left side. */
+@media (min-width: 2848px) {
+  header, main { max-width: none; }
+  main { display: grid; grid-template-columns: minmax(0, 1fr) 1400px; column-gap: 16px; grid-template-rows: auto auto auto 1fr; }
+  main > section { grid-column: 1; }
+  main > section[aria-label="Values"] { grid-column: 2; grid-row: 1 / span 4; align-self: start; position: sticky; top: 8px; max-height: calc(100vh - 24px); overflow-y: auto; }
+}

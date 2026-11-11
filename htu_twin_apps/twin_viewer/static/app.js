@@ -4,7 +4,7 @@
 // twin's values at that step, the twin's output beside the measurement, and the values below.
 
 // edits: twin input key -> value, sent with every step (see server.py's docstring)
-const state = { datasets: [], dataset: null, edits: {}, request: 0 };
+const state = { datasets: [], dataset: null, edits: {}, request: 0, selecting: null, source: "fit" };
 
 const $ = (id) => document.getElementById(id);
 const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -12,6 +12,12 @@ const plotConfig = { displayModeBar: false, responsive: true };
 
 // The synoptic's element for the twin key a scan steps (the dataset's `scanned`).
 const SCANNED_ELEMENT = { chicane_current: "chicane" };
+
+// The step slider's label: its number, and, for a dataset of regrouped shots, the group's description.
+function stepLabel(i) {
+  const d = state.dataset;
+  return `${i + 1} of ${d.steps}` + (d.step_labels ? ` · ${d.step_labels[i]}` : "");
+}
 
 async function api(path) {
   const r = await fetch(path);
@@ -101,7 +107,15 @@ function heatmap(div, title, z, x, y, xTitle, yTitle, reversed, seam) {
   }
   layout.xaxis.showgrid = layout.yaxis.showgrid = false;
   if (reversed) layout.yaxis.autorange = "reversed";
+  // square pixels: the image keeps its shape (a pixel is `x[1] - x[0]` wide and `y[1] - y[0]` tall in
+  // axis units, one unit each when the axes are the pixel numbers)
+  layout.yaxis.scaleanchor = "x";
+  layout.yaxis.scaleratio = x ? (x[1] - x[0]) / (y[1] - y[0]) : 1;
+  layout.xaxis.constrain = layout.yaxis.constrain = "domain";
   layout.uirevision = title;
+  // the plot area is 286px tall (the div less its margins), square pixels make it that much wide
+  // POSIT: 286 is 360px (style.css's .plot) less baseLayout's top and bottom margins; 440px keeps the longest title
+  div.style.width = `${Math.max(440, Math.round((286 * z[0].length) / z.length) + 64)}px`;
   const trace = { type: "heatmap", z, colorscale: colorscale(), showscale: false, hoverongaps: false };
   if (x) { trace.x = x; trace.y = y; }
   Plotly.react(div, [trace], layout, plotConfig);
@@ -117,7 +131,9 @@ function drawPlots(r) {
   const plots = $("plots");
   const want = r.kind === "aline" ? ["m", "t"] : r.kind === "magspec" ? ["s", "m", "t"] : ["s"];
   if (plots.dataset.layout !== want.join()) {
-    plots.innerHTML = want.map((k) => `<div class="plot" id="plot-${k}"></div>`).join("");
+    plots.innerHTML = want
+      .map((k) => `<div class="plot${k === "s" ? "" : " image"}" id="plot-${k}"></div>`)
+      .join("");
     plots.dataset.layout = want.join();
   }
   if (want.includes("s")) {
@@ -152,6 +168,8 @@ function drawPlots(r) {
     heatmap($("plot-t"), "Twin: energy against AngleAxis (twin's AngleAxis scale)", r.twin.image, x, y,
       "Energy [MeV]", "AngleAxis", false, r.seam_mev);
   }
+  // the images' widths changed the room the spectrum has, and Plotly only follows the window's size
+  for (const k of want) if ($(`plot-${k}`).data) Plotly.Plots.resize($(`plot-${k}`));
 }
 
 // --- the values
@@ -186,14 +204,15 @@ function drawEdits() {
 async function loadStep() {
   const d = state.dataset;
   const i = Number($("step").value);
-  $("step-label").textContent = `${i + 1} of ${d.steps}`;
+  $("step-label").textContent = stepLabel(i);
+  syncUrl(i);
   const id = ++state.request;
   $("status").textContent = "running the twin…";
   $("controls").classList.add("busy");
   try {
     const e = Object.keys(state.edits).length ? `&edits=${encodeURIComponent(JSON.stringify(state.edits))}` : "";
     const c = `&scale=${$("stitch-scale").checked ? 1 : 0}&align=${$("stitch-align").checked ? 1 : 0}`;
-    const r = await api(`/api/step?scan=${encodeURIComponent(d.scan)}&step=${i}${e}${c}`);
+    const r = await api(`/api/step?scan=${encodeURIComponent(d.scan)}&step=${i}${e}${c}&source=${encodeURIComponent(state.source)}`);
     if (id !== state.request) return; // a later step was asked for meanwhile
     drawSynoptic(r.settings, d.scanned);
     drawPlots(r);
@@ -206,11 +225,40 @@ async function loadStep() {
   }
 }
 
-function selectDataset(scan) {
-  state.dataset = state.datasets.find((d) => d.scan === scan);
+// Keeps the address bar at the view: the dataset, its step (from 1) and a source other than the first.
+function syncUrl(i) {
+  const q = new URLSearchParams({ scan: state.dataset.scan, step: String(i + 1) });
+  if (state.source !== $("source-select").options[0].value) q.set("source", state.source);
+  try {
+    history.replaceState(null, "", `?${q}`);
+  } catch (e) {
+    // POSIT: a page that may not change its address (a sandboxed frame) just goes without
+  }
+}
+
+// Selects a dataset: its steps are read when it is first selected, not when the list is built.
+// `step` is the 0-based step to show, 0 unless a link asked for another.
+async function selectDataset(scan, step = 0) {
+  const d = state.datasets.find((x) => x.scan === scan);
+  state.selecting = scan;
+  $("controls").classList.add("busy");
+  $("status").textContent = "reading the scan…";
+  if (d.steps === undefined) {
+    try {
+      Object.assign(d, await api(`/api/dataset?scan=${encodeURIComponent(scan)}`));
+    } catch (e) {
+      if (state.selecting === scan) {
+        $("status").textContent = `error: ${e.message}`;
+        $("controls").classList.remove("busy");
+      }
+      return;
+    }
+  }
+  if (state.selecting !== scan) return; // another dataset was selected meanwhile
+  state.dataset = d;
   const s = $("step");
   s.max = String(state.dataset.steps - 1);
-  s.value = "0";
+  s.value = String(Math.min(Math.max(step, 0), state.dataset.steps - 1));
   s.disabled = state.dataset.steps < 2;
   $("stitch").hidden = state.dataset.kind !== "magspec";
   $("plots").dataset.layout = "";
@@ -227,11 +275,23 @@ async function init() {
     return;
   }
   state.datasets = v.datasets;
-  $("source").textContent = `Twin: geecs-lume-twin with the fitted LPA source and corrections from ${v.source}`;
+  $("source").textContent = `Twin: geecs-lume-twin with the line corrections from ${v.source}; the LPA source is chosen below`;
   $("dataset").innerHTML = v.datasets
     .map((d) => `<option value="${d.scan}">${d.scan}: ${escapeHtml(d.title)}</option>`)
     .join("");
   $("dataset").addEventListener("change", (e) => selectDataset(e.target.value));
+  // the sources: the fit's, and any fbpic runs; a source edit only applies to the fit's
+  $("source-select").innerHTML = v.sources
+    .map((s) => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.label)}</option>`)
+    .join("");
+  $("source-select").hidden = v.sources.length < 2;
+  $("source-select").parentElement.hidden = v.sources.length < 2;
+  $("source-select").addEventListener("change", (e) => {
+    state.source = e.target.value;
+    for (const k of Object.keys(state.edits)) if (k.startsWith("source.")) delete state.edits[k];
+    drawEdits();
+    loadStep();
+  });
   // an input's change (Enter or leaving it) reruns the twin with it; an emptied one is unedited
   $("settings").addEventListener("change", (e) => {
     const k = e.target.dataset.key;
@@ -250,14 +310,20 @@ async function init() {
   for (const k of ["stitch-scale", "stitch-align"]) $(k).addEventListener("change", loadStep);
   drawEdits();
   $("step").addEventListener("input", () => {
-    $("step-label").textContent = `${Number($("step").value) + 1} of ${state.dataset.steps}`;
+    $("step-label").textContent = stepLabel(Number($("step").value));
     clearTimeout(timer);
     timer = setTimeout(loadStep, 150);
   });
   const q = new URLSearchParams(location.search).get("scan");
-  const d = v.datasets.find((x) => x.scan === q) || v.datasets[0];
+  const d = v.datasets.find((x) => x.scan === q || x.scan.endsWith(`/${q}`)) || v.datasets[0];
+  const src = new URLSearchParams(location.search).get("source");
+  if (src && v.sources.some((x) => x.id === src)) {
+    state.source = src;
+    $("source-select").value = src;
+  }
   $("dataset").value = d.scan;
-  selectDataset(d.scan);
+  // the link's step counts from 1; one that is not a number is the first
+  selectDataset(d.scan, (parseInt(new URLSearchParams(location.search).get("step"), 10) || 1) - 1);
 }
 
 init();

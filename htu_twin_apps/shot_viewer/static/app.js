@@ -10,6 +10,7 @@ const state = {
   hiddenDevices: new Set(),
   playing: false,
   frameRequests: {}, // device name -> number of the latest frame request, to drop stale replies
+  frameControllers: {}, // device name -> AbortController of its frame request in flight
 };
 
 // A setting counts as changed when it moves by more than this fraction of its typical size, and
@@ -40,9 +41,9 @@ function css(name) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
 
-async function api(path, params = {}) {
+async function api(path, params = {}, signal = undefined) {
   const query = new URLSearchParams(params).toString();
-  const response = await fetch(`/api/${path}${query ? "?" + query : ""}`);
+  const response = await fetch(`/api/${path}${query ? "?" + query : ""}`, { signal });
   const body = await response.json();
   if (!response.ok) throw new Error(body.error || response.statusText);
   return body;
@@ -411,8 +412,27 @@ function renderTimeline() {
     `<strong>Shot ${s.shot[row]}</strong> of ${s.shot.length} · step ${s.bin[row] ?? "—"}${parameter} · ${clock}`;
 }
 
+// Opens a shot: what is already in the page at once, then its frames and scalars (loadShot).
 async function openShot(row) {
-  if (!state.scan || row < 0 || row >= state.scan.shot.length) return;
+  if (!showShot(row)) return;
+  await loadShot(row);
+}
+
+// How long the slider rests before the shot it is on has its frames and scalars requested.
+const SLIDER_REST_MS = 200;
+let sliderTimer = null;
+
+// A drag over the slider shows each shot it passes at once, and loads only where it comes to rest.
+function dragToShot(row) {
+  if (!showShot(row)) return;
+  clearTimeout(sliderTimer);
+  sliderTimer = setTimeout(() => loadShot(row), SLIDER_REST_MS);
+}
+
+// Shows `row`'s shot: its number, time, collected values and settings. False if there is no such shot.
+function showShot(row) {
+  if (!state.scan || row < 0 || row >= state.scan.shot.length) return false;
+  clearTimeout(sliderTimer);
   state.shotRow = row;
   const shot = state.scan.shot[row];
   $("shot-panel").hidden = false;
@@ -424,6 +444,13 @@ async function openShot(row) {
   updateChartHighlights();
   updateTableHighlight();
   writeLink();
+  return true;
+}
+
+// Requests the shot's scalars and device frames, unless the page has moved on to another shot.
+async function loadShot(row) {
+  if (state.shotRow !== row) return;
+  const shot = state.scan.shot[row];
   const scalars = api("shot", { scan: state.scan.id, shot }).then((body) => {
     if (state.shotRow === row) { shotScalars = body.values; renderScalarTable(); }
   });
@@ -534,11 +561,15 @@ async function renderFrames() {
     const div = frameDiv(device);
     const request = (state.frameRequests[device.name] || 0) + 1;
     state.frameRequests[device.name] = request;
+    // a newer shot's request supersedes the one in flight, which the server need not finish
+    if (state.frameControllers[device.name]) state.frameControllers[device.name].abort();
+    const controller = new AbortController();
+    state.frameControllers[device.name] = controller;
     try {
-      const frame = await api("frame", { scan: state.scan.id, shot, device: device.name });
+      const frame = await api("frame", { scan: state.scan.id, shot, device: device.name }, controller.signal);
       if (state.frameRequests[device.name] === request) drawFrame(div, device, frame);
     } catch (error) {
-      div.textContent = `${device.name}: ${error.message}`;
+      if (error.name !== "AbortError") div.textContent = `${device.name}: ${error.message}`;
     }
   }));
 }
@@ -629,7 +660,7 @@ $("last-shot").addEventListener("click", () => { stop(); openShot(state.scan.sho
 $("prev-shot").addEventListener("click", () => step(-1));
 $("next-shot").addEventListener("click", () => step(1));
 $("play").addEventListener("click", () => (state.playing ? stop() : play()));
-$("shot-slider").addEventListener("input", (event) => { stop(); openShot(Number(event.target.value)); });
+$("shot-slider").addEventListener("input", (event) => { stop(); dragToShot(Number(event.target.value)); });
 $("download").addEventListener("click", (event) => {
   if (!state.collected.length) event.preventDefault();
 });

@@ -13,7 +13,8 @@ camera's scale, zero and resolution floor are fitted (`pointing.score`, SCALE "f
 scale is held at a number (the twin's AngleAxis taken as the driver's when 1) and the zero and
 floor fitted. Each step is tracked in a worker of one pool.
 
-Run as `python -m htu_twin_apps.lpa_source.aline_vertical <data> --source <saved source> ...`.
+Run as `python -m htu_twin_apps.lpa_source.aline_vertical <day> [--root DIR] --source <saved source>
+...` (a day name such as `26_0929`, or a day folder's path).
 
 :copyright: Copyright (c) 2026 RadiaSoft LLC.  All Rights Reserved.
 :license: http://www.apache.org/licenses/LICENSE-2.0.html
@@ -24,12 +25,12 @@ from __future__ import annotations
 import argparse
 import dataclasses
 import json
-import os
 import pathlib
 import time
 
 import numpy
 
+from htu_twin_apps import days
 from htu_twin_apps.lpa_source import scans as htu_scans
 
 # The knobs fitted by default: the A-line fit's and the triplet's vertical offset.
@@ -127,7 +128,13 @@ def main():
 
     p = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     p.add_argument(
-        "data", nargs="?", default=os.environ.get("HTU_DATA"), type=pathlib.Path
+        "data",
+        help="the day to read: a name such as 26_0929 (with --root) or a day folder's path",
+    )
+    p.add_argument(
+        "--root",
+        type=pathlib.Path,
+        help="the data root, the folder holding Y2026",
     )
     p.add_argument(
         "--source", type=pathlib.Path, required=True, help="a saved source (JSON)"
@@ -142,8 +149,10 @@ def main():
     p.add_argument("--log", type=pathlib.Path)
     p.add_argument("--save", type=pathlib.Path)
     a = p.parse_args()
-    if a.data is None:
-        p.error("give the data directory, or set $HTU_DATA")
+    try:
+        a.data = days.folder(a.data, a.root)
+    except (FileNotFoundError, ValueError) as e:
+        p.error(str(e))
     if a.scale != "free":
         float(a.scale)
     j = json.loads(a.source.read_text())

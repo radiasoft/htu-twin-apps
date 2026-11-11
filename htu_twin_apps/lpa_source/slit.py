@@ -169,13 +169,18 @@ def fit(
 
 
 def measured(
-    data: pathlib.Path, scan: str = SCAN, axis_start_mev: float | None = None
+    data: pathlib.Path,
+    scan: str = SCAN,
+    axis_start_mev: float | None = None,
+    numbers: list | None = None,
 ) -> list:
-    """The steps of `scan` found below `data`: stitched spectra and settings. `axis_start_mev`: as for `scans.energy_axis`."""
+    """The steps of `scan` found below `data`: stitched spectra and settings. `axis_start_mev`: as for `scans.energy_axis`.
+    `numbers`: each row's step in place of the scan's own (`Bin #`), to group its shots otherwise
+    (by charge, say); a negative number leaves the row out."""
     from htu_twin_apps.lpa_source import compare
 
     f, rows = htu_scans.table(data, scan)
-    n = htu_scans.step_numbers(rows)
+    n = htu_scans.step_numbers(rows) if numbers is None else list(numbers)
     c = [htu_scans.stack(f, f"UC_BCaveMagSpec{x}-interpSpec", rows) for x in CAMERAS]
     # POSIT: each camera's -interpSpec frames share one energy axis (column 0) in a scan
     x = numpy.concatenate(
@@ -186,7 +191,7 @@ def measured(
     e = numpy.arange(x.min(), x.max(), compare.MEASURED_STEP_MEV)
     e = e[: e.size // k * k]
     rv = []
-    for i in sorted(set(n)):
+    for i in sorted(x for x in set(n) if x >= 0):
         j = [r for r, m in enumerate(n) if m == i and all(z[r] >= 0 for _, z in c)]
         if not j:
             raise ValueError(f"{scan} step {i}: no shot with both cameras' spectra")

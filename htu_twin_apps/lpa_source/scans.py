@@ -75,6 +75,13 @@ def number(text):
     return v if numpy.isfinite(v) else None
 
 
+def recorded_axis_start(folder: pathlib.Path) -> float:
+    """Cam1's first energy label [MeV] as the camera driver recorded it in the scan `folder`:
+    the `start_mev` for which `energy_axis` keeps the scan's own labels."""
+    c, _ = stack(folder, "UC_BCaveMagSpecCam1-interpSpec", [])
+    return float(c[0, 0, 0])
+
+
 def stack(folder: pathlib.Path, device: str, rows: list) -> tuple:
     """A device stack's frames and, per table row, the matched frame (-1 for none)."""
     with h5py.File(folder / device / f"{device}.h5", "r") as f:
@@ -95,9 +102,13 @@ def step_numbers(rows: list) -> list:
 
 
 def table(data: pathlib.Path, scan: str) -> tuple:
-    """(folder, rows) of `scan` (a scan folder name, such as `Scan025`) found below `data`."""
-    f = sorted(pathlib.Path(data).rglob(f"scans/{scan}/ScanData{scan}.txt"))
+    """(folder, rows) of `scan` (a scan name, such as `Scan025`) in the day folder `data` (see
+    `htu_twin_apps.days`): its table is `scans/<folder>/ScanData<scan>.txt`, whatever the folder
+    is called (`Scan014_donotuse`)."""
+    f = sorted(pathlib.Path(data).glob(f"scans/*/ScanData{scan}.txt"))
     if len(f) != 1:
-        raise FileNotFoundError(f"{len(f)} scan tables for {scan} below {data}")
+        raise FileNotFoundError(
+            f"{len(f)} scan tables for {scan} in {data}: it must be a day folder, with scans/ in it"
+        )
     with open(f[0], newline="") as x:
         return f[0].parent, list(csv.DictReader(x, delimiter="\t"))

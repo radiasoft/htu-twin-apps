@@ -2,7 +2,7 @@
 
     python rerun_slit_a_rescore.py DATA NERSC_JSON OUT_DIR [--repo REPO] [--steps 1-17]
 
-DATA is the htu-sample-data directory, NERSC_JSON the FBPIC `sample_dataset.json` (the start of step
+DATA is the htu-sample-data directory (holding Undulator/Y2026/09-Sep/26_0929), NERSC_JSON the FBPIC `sample_dataset.json` (the start of step
 1), OUT_DIR where everything is written (use a new directory: the original fits are not touched).
 Run from anywhere; `compare` runs with the repository root as its working directory. The result,
 slit_a_rescore.json, is what `htu_twin_apps/twin_viewer/twin-fit-values.json` was copied from.
@@ -40,6 +40,11 @@ import re
 import subprocess
 import sys
 import time
+
+from htu_twin_apps import days
+
+# The day the chain fits.
+DAY = "26_0929"
 
 # the 15 knobs of the pixel-size A-line fits (steps 12 and 14)
 ALINE_KNOBS = (
@@ -93,6 +98,8 @@ def _args():
     p.add_argument("--steps", default="1-17", help="e.g. 1-17, 14-17 or 3,4")
     a = p.parse_args()
     a.steps = _parse_steps(a.steps)
+    # the chain is 2026-09-29's: its scans are read from that day's folder
+    a.data = days.folder(DAY, a.data)
     return a
 
 
