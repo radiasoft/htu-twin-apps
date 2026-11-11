@@ -1,0 +1,51 @@
+{
+  "days": {
+    "26_0929": {
+      "energy_axis": "early",
+      "slit": "in",
+      "note": "energies rescaled to the early (Scan020) driver setting; the slit was put in after Scan016 (HTU's README)"
+    }
+  },
+  "datasets": [
+    {
+      "day": "26_0929",
+      "scan": "Scan016",
+      "kind": "scan016",
+      "slit": "out",
+      "title": "Long noscan: chicane, EMQs and slit out (spectrum)"
+    },
+    {"day": "26_0929", "scan": "Scan023", "kind": "aline"},
+    {"day": "26_0929", "scan": "Scan026", "kind": "aline"},
+    {
+      "day": "26_0929",
+      "scan": "Scan029",
+      "title": "EMQ3 scan on the spectrometer, EMQ3 not powered (HTU's description says emq2)"
+    },
+    {
+      "day": "26_0929",
+      "scan": "Scan030",
+      "title": "EMQ3 scan on the spectrometer (HTU's description says emq2)"
+    },
+    {
+      "day": "26_1001",
+      "scan": "Scan014",
+      "variant": "charge",
+      "split": {"by": "ict", "groups": 4, "min_ict_pc": 5},
+      "title": "Downramp noscan, 3002 shots split by charge into quartiles, empty shots left out"
+    },
+    {
+      "day": "26_1001",
+      "scan": "Scan014",
+      "variant": "time",
+      "split": {"by": "time", "groups": 3, "min_ict_pc": 5},
+      "title": "Downramp noscan, 3002 shots split in time into thirds, empty shots left out"
+    },
+    {
+      "day": "26_1001",
+      "scan": "Scan014",
+      "variant": "peak",
+      "split": {"by": "peak", "split_mev": 92, "min_ict_pc": 5},
+      "title": "Downramp noscan, 3002 shots split by each shot's spectral peak: below / above 92 MeV"
+    }
+  ]
+}

@@ -13,7 +13,8 @@ The source is a handful of knobs (`LPASource`) sampled into particles:
 - the bunch duration (rms) and the charge.
 
 `from_nersc()` sets the knobs from one run of the NERSC `initial_sample` dataset (its moments,
-not particles), so that a run can start the source.
+not particles), so that a run can start the source. `from_fbpic()` reads an fbpic run's particles
+instead, for use in place of the knobs.
 
 :copyright: Copyright (c) 2026 RadiaSoft LLC.  All Rights Reserved.
 :license: http://www.apache.org/licenses/LICENSE-2.0.html
@@ -27,6 +28,9 @@ import math
 import numpy
 import pathlib
 
+# The speed of light [m/s] and the electron's charge [C].
+C = 299792458.0
+E_CHARGE = 1.602176634e-19
 ELECTRON_MASS_MEV = 0.51099895
 # fbpic's analysis selection: electrons with uz above 30 (about 15 MeV)
 NERSC_UZ_MIN = 30.0
@@ -54,6 +58,51 @@ class LPASource:
     seed: int = 1
     size_x_um: float = 3.0
     size_y_um: float = 2.0
+
+
+def from_fbpic(path: pathlib.Path, energy_min_mev: float = 15.0):
+    """The electrons of an fbpic openPMD file (`data<iteration>.h5`, species `electrons`) above
+    `energy_min_mev` and moving forward, as a `ParticleGroup` at the plasma exit as `particles()`
+    makes one: fbpic saves every particle at one time, so each is drifted from its z to the
+    bunch's mean z (straight, as in vacuum), its arrival time there becoming its `t`, and `z`
+    set to 0."""
+    import h5py
+    import pmd_beamphysics
+
+    with h5py.File(path, "r") as f:
+        # POSIT: fbpic writes one iteration per file
+        g = f[f"data/{next(iter(f['data']))}/particles/electrons"]
+
+        def _si(name):
+            return g[name][()] * g[name].attrs.get("unitSI", 1.0)
+
+        x, y, z = (_si(f"position/{c}") for c in "xyz")
+        # momenta in units of m_e c
+        u = [
+            _si(f"momentum/{c}") / (ELECTRON_MASS_MEV * 1e6 * E_CHARGE / C)
+            for c in "xyz"
+        ]
+        w = _si("weighting")
+    gamma = numpy.sqrt(1.0 + u[0] ** 2 + u[1] ** 2 + u[2] ** 2)
+    k = ((gamma - 1.0) * ELECTRON_MASS_MEV > energy_min_mev) & (u[2] > 0)
+    if not k.any():
+        raise ValueError(f"no electrons above {energy_min_mev} MeV in {path}")
+    d = numpy.average(z[k], weights=w[k]) - z[k]
+    t = d / (u[2][k] / gamma[k] * C)
+    return pmd_beamphysics.ParticleGroup(
+        data={
+            "x": x[k] + u[0][k] / u[2][k] * d,
+            "y": y[k] + u[1][k] / u[2][k] * d,
+            "z": numpy.zeros(k.sum()),
+            "px": u[0][k] * ELECTRON_MASS_MEV * 1e6,
+            "py": u[1][k] * ELECTRON_MASS_MEV * 1e6,
+            "pz": u[2][k] * ELECTRON_MASS_MEV * 1e6,
+            "t": t - numpy.average(t, weights=w[k]),
+            "status": numpy.ones(k.sum(), dtype=int),
+            "weight": w[k] * E_CHARGE,
+            "species": "electron",
+        }
+    )
 
 
 def from_nersc(dataset: pathlib.Path, run: str, **overrides) -> LPASource:

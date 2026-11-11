@@ -4,12 +4,13 @@
 
 `slit_a_rescore.json` is the fit result that `htu_twin_apps/twin_viewer/twin-fit-values.json`
 holds: the two files are byte-identical (checked 2026-11-04). The twin viewer reads it with
-`htu-twin-viewer <data directory> --source twin-fit-values.json`. This document traces how that
+`htu-twin-viewer 26_0929 --root <data directory> --source twin-fit-values.json`. This document traces how that
 file was made, from the NERSC sample through 17 steps, and `rerun_slit_a_rescore.py` in this
 directory reruns the whole chain (writing `slit_a_rescore.json` to a directory you choose).
 
 Reconstructed 2026-11-04 from the fit runs' output directory, its queue scripts and the
-2026-10-30..11-03 session history. Times are UTC. `$D` is the HTU sample data directory, `$F` the
+2026-10-30..11-03 session history. Times are UTC. `$D` is the 2026-09-29 day folder (`<data root>/Undulator/Y2026/09-Sep/26_0929`: the commands take a
+day folder, or a day name with `--root`), `$F` the
 directory the fits were written to, and every command runs from the repository root. `compare` is
 `python -u -m htu_twin_apps.lpa_source.compare` (the `htu-lpa-source` entry point).
 

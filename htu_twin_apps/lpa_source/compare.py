@@ -1,6 +1,6 @@
 """Compare LPA sources, tracked through the HTU twin, with a spectrometer scan's measured spectrum.
 
-Run `htu-lpa-source [data directory]` to track the twin's default Gaussian source, sources made
+Run `htu-lpa-source <day> [--root DIR]` (a day name such as `26_0929`, or a day folder's path) to track the twin's default Gaussian source, sources made
 from NERSC `initial_sample` runs (`--nersc`) and the `LPASource` defaults to the spectrometer
 entrance with Scan016's settings, and compare each with Scan016's measured spectrum. With
 `--fit`, the knobs named are also fitted to the measurement (`fit.fit`), starting from a source
@@ -27,10 +27,10 @@ import dataclasses
 import h5py
 import json
 import numpy
-import os
 import pathlib
 import time
 
+from htu_twin_apps import days
 from htu_twin_apps.lpa_source import scans as htu_scans
 
 # The stitched spectrometer analysis (GEECS ScanAnalysis `UC_BCaveMagSpecStitcher`) of a scan.
@@ -90,8 +90,13 @@ def main():
         "data",
         nargs="?",
         type=pathlib.Path,
-        default=os.environ.get("HTU_DATA"),
-        help="the directory below which the scans are found (default: $HTU_DATA)",
+        help="the day to read, a name such as 26_0929 (with --root) or a day folder's path "
+        + "(see htu_twin_apps.days)",
+    )
+    p.add_argument(
+        "--root",
+        type=pathlib.Path,
+        help="the data root, the folder holding Y2026",
     )
     p.add_argument(
         "--aline",
@@ -219,7 +224,11 @@ def main():
     )
     a = p.parse_args()
     if a.data is None:
-        p.error("give the data directory, or set $HTU_DATA")
+        p.error("give the day, such as 26_0929 with --root, or a day folder's path")
+    try:
+        a.data = days.folder(a.data, a.root)
+    except (FileNotFoundError, ValueError) as e:
+        p.error(str(e))
     if (a.aline or a.pointing or a.profiles or a.slit or a.joint) and not (
         a.fit or a.source
     ):
@@ -459,9 +468,11 @@ def _logger(path: pathlib.Path | None, name: str):
 
 
 def _one(data: pathlib.Path, pattern: str) -> pathlib.Path:
-    f = sorted(pathlib.Path(data).rglob(pattern))
+    f = sorted(pathlib.Path(data).glob(pattern))
     if len(f) != 1:
-        raise FileNotFoundError(f"{len(f)} matches of {pattern} below {data}")
+        raise FileNotFoundError(
+            f"{len(f)} matches of {pattern} in the day folder {data}"
+        )
     return f[0]
 
 

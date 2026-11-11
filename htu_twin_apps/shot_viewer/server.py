@@ -1,7 +1,8 @@
 """HTU shot viewer: browse HTU scans shot by shot, from the scan folders as HTU saves them.
 
-Run `htu-shot-viewer [data directory] [--port N]` and open http://127.0.0.1:8050. The data
-directory is the argument, or `$HTU_DATA` without one; every `scans/Scan*` folder below it with a
+Run `htu-shot-viewer <day> ... [--root DIR] [--port N]` and open http://127.0.0.1:8050. The days
+are the arguments: day names such as `26_0929` (below `--root`) or day folders'
+paths (`htu_twin_apps.days`); only those folders are read. Every `scans/*` folder of a day with a
 `ScanDataScan*.txt` is a scan. A scan whose raw folder is missing but whose analysis table
 (`analysis/s<N>.txt`, the scalar table with the analysis results added) is there is a scan too,
 with its scalars only.
@@ -25,6 +26,7 @@ import configparser
 import csv
 import functools
 import h5py
+import htu_twin_apps.days
 import htu_twin_apps.stacks
 import http
 import http.server
@@ -33,7 +35,6 @@ import json
 import math
 import mimetypes
 import numpy
-import os
 import pathlib
 import re
 import urllib.parse
@@ -41,7 +42,7 @@ import urllib.parse
 # An analysis table, `analysis/s<scan number>.txt`.
 ANALYSIS_TABLE = re.compile(r"^s(\d+)\.txt$")
 # The data directory, below which the scans are found; set by main.
-DATA = None
+DAYS = {}
 # The largest side, in pixels, of an image sent to the browser; larger images are block-averaged.
 MAX_IMAGE_SIDE = 400
 # A raw folder's scalar table, `ScanDataScan<scan number>.txt`.
@@ -250,25 +251,27 @@ class Scan:
 
 
 def main():
-    global DATA
+    global DAYS
     p = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     p.add_argument(
-        "data",
-        nargs="?",
+        "days",
+        nargs="+",
+        help="the days to browse: names such as 26_0929, or day folders' paths",
+    )
+    p.add_argument(
+        "--root",
         type=pathlib.Path,
-        default=os.environ.get("HTU_DATA"),
-        help="the directory below which the scans are found (default: $HTU_DATA)",
+        help="the data root, the folder holding Y2026",
     )
     p.add_argument("--port", type=int, default=8050)
     a = p.parse_args()
-    if a.data is None:
-        p.error("give the data directory, or set $HTU_DATA")
-    DATA = pathlib.Path(a.data).resolve()
-    if not DATA.is_dir():
-        p.error(f"not a directory: {DATA}")
+    try:
+        DAYS = htu_twin_apps.days.folders(a.days, a.root)
+    except (FileNotFoundError, ValueError) as e:
+        p.error(str(e))
     t = scan_tables()
     n = sum(1 for p in t.values() if not RAW_TABLE.match(p.name))
-    print(f"{len(t)} scans under {DATA} ({n} from their analysis table only)")
+    print(f"{len(t)} scans in {', '.join(DAYS)} ({n} from their analysis table only)")
     s = http.server.ThreadingHTTPServer(("127.0.0.1", a.port), Handler)
     print(f"serving on http://127.0.0.1:{a.port}")
     try:
@@ -284,24 +287,24 @@ def scan(scan_id: str) -> Scan:
 
 @functools.cache
 def scan_tables() -> dict[str, pathlib.Path]:
-    """Every scan below the data directory, by `<date folder>/<scan folder>`, and its table.
+    """Every scan of the days, by `<day>/<scan folder>`, and its table.
 
     The table is the raw folder's `ScanDataScan<N>.txt`. A scan with no raw folder but an
-    analysis table (`<date folder>/analysis/s<N>.txt`) is listed by that table, as `Scan<NNN>`.
+    analysis table (`<day>/analysis/s<N>.txt`) is listed by that table, as `Scan<NNN>`. Only the
+    days' `scans/` and `analysis/` folders are listed.
     """
     found = {}
-    for t in DATA.rglob("ScanDataScan*.txt"):
-        m = RAW_TABLE.match(t.name)
-        if m and t.parent.parent.name == "scans":
-            d = t.parent.parent.parent.name
-            found[(d, int(m.group(1)))] = (f"{d}/{t.parent.name}", t)
-    for t in DATA.rglob("s*.txt"):
-        m = ANALYSIS_TABLE.match(t.name)
-        if m and t.parent.name == "analysis":
-            d = t.parent.parent.name
-            found.setdefault(
-                (d, int(m.group(1))), (f"{d}/Scan{int(m.group(1)):03d}", t)
-            )
+    for d, f in DAYS.items():
+        for t in sorted((f / "scans").glob("*/ScanDataScan*.txt")):
+            m = RAW_TABLE.match(t.name)
+            if m:
+                found[(d, int(m.group(1)))] = (f"{d}/{t.parent.name}", t)
+        for t in sorted((f / "analysis").glob("s*.txt")):
+            m = ANALYSIS_TABLE.match(t.name)
+            if m:
+                found.setdefault(
+                    (d, int(m.group(1))), (f"{d}/Scan{int(m.group(1)):03d}", t)
+                )
     return {i: t for _, (i, t) in sorted(found.items())}
 
 

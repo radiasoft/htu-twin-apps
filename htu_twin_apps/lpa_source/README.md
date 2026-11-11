@@ -11,7 +11,7 @@ Install the repository with the `lpa-source` extra (see the [top-level README](.
 and the HTU twin's `htu` package from geecs-lume-twin, which is not on PyPI. Then:
 
 ```bash
-htu-lpa-source <data directory> --nersc <path>/runs/initial_sample/sample_dataset/sample_dataset.json
+htu-lpa-source 26_0929 --root <data root> --nersc <path>/runs/initial_sample/sample_dataset/sample_dataset.json
 ```
 
 It prints a table and writes `lpa_source_compare.png` (`--out` to change it). It compares the
@@ -24,7 +24,7 @@ To also fit knobs to the measurement, name them with `--fit`; the fit starts fro
 to the table and plot:
 
 ```bash
-htu-lpa-source <data directory> --nersc <path>/sample_dataset.json --runs sim_0003 \
+htu-lpa-source 26_0929 --root <data root> --nersc <path>/sample_dataset.json --runs sim_0003 \
     --fit energy_mev,energy_sigma_mev,energy_tail_mev,divergence_x_mrad,divergence_y_mrad,divergence_power \
     --save scan016_source.json
 ```
@@ -40,7 +40,7 @@ Scan016 table. It takes one to two hours (two Nelder-Mead starts of up to 60 eva
 tracking 45 scan steps):
 
 ```bash
-htu-lpa-source <data directory> --source scan016_source.json --pointing --save pointing_source.json
+htu-lpa-source 26_0929 --root <data root> --source scan016_source.json --pointing --save pointing_source.json
 ```
 
 `--slit jaws` or `--slit blade` fits Scan019 (an R56 scan with the slit in; `slit.py`): the
@@ -73,9 +73,11 @@ Scan016's spectrum and `--profiles-knobs` choosing the knobs.
 `--energy-reference early|late` picks which of the spectrometer driver's two field settings is
 taken as right for every scan's energy axis (`scans.energy_axis`): the driver's axis in Scans
 025 to 030 is Scan020's scaled by 0.833 and 0.824 while the beam stays on the same pixels.
-`early` (the default) is the one the fits favour.
+`early` (the default) is the one the fits favour. `scans.recorded_axis_start` gives the driver's own
+labels instead, which the twin viewer uses for 2026-10-01 (no scans there to compare labels against).
 
-`python -m htu_twin_apps.lpa_source.aline_vertical <data> --source <saved>` (`aline_vertical.py`)
+`python -m htu_twin_apps.lpa_source.aline_vertical 26_0929 --root <data root> --source <saved>`
+(`aline_vertical.py`)
 fits the A-line objective and the spectrometer EMQ scans' vertical profiles together, one set of
 knobs for both (`--scale free`, the default, fits each camera's scale; a number fixes it).
 
@@ -99,6 +101,9 @@ run can be followed and its best point recovered if it dies; every tenth is also
   `from_nersc()` sets the knobs from one run of the NERSC `initial_sample` dataset, which holds
   moments (means, the 6x6 covariance, charge), not particles. Its mean and rms energy are split
   evenly between the peak width and the tail; that split is a choice, not in the data.
+  `from_fbpic(path)` takes the beam at the plasma exit of an fbpic run (an openPMD file of
+  particles, those above `energy_min_mev`, 15 MeV by default, each drifted to the bunch's mean z):
+  the twin viewer's `--fbpic` offers a density scan's runs as sources this way.
 - **Transport** (`twin.py`): the twin's line is built only up to `PIPE_AP8`, the end of the beam
   pipe at the spectrometer's entrance. Machine settings go through the twin's own
   `htu.model._apply_machine_state`. `SCAN016_STATE` is Scan016's: chicane, EMQs and steerers off
@@ -304,6 +309,6 @@ correlated along a valley.
   `pmq_z_mm`), which no measurement used here constrains.
 - The vertical plane: the A-line scans need the EMQ fields 0.6 to 0.9 mm off the beam vertically,
   which the spectrometer scans' vertical profiles do not show, and through the spectrometer
-  model the fitted camera scale is -0.07 to -0.26 where 1 is expected. The fits' results after
+  model the fitted camera scale is -0.07 to -0.26 where 1 is expected.
 - Tests: none yet.
 - Shot-to-shot spread: averages are compared, not single shots.
