@@ -20,7 +20,7 @@ the fitted pixel size.*
 Install the repository (see the [top-level README](../../README.md)), then:
 
 ```bash
-htu-twin-viewer <day> ... --source <fitted twin values json file> [--root <data root>]
+htu-twin-viewer <day> ... [--source <fitted twin values json file>] [--root <data root>]
 ```
 
 Ex., the command the viewer was developed with (two days, the fbpic density scan as extra
@@ -29,7 +29,7 @@ sources, 50,000 particles per step, 4 torch threads, on port 8008):
 ```bash
 htu-twin-viewer 26_0929 26_1001 \
     --root <data root> \
-    --source <repo>/htu_twin_apps/twin_viewer/twin-fit-values.json \
+    --source <repo>/htu_twin_apps/twin_viewer/fits/aline_slit_spectrometer_free_scale.json \
     --fbpic <data root>/simulations/htu_den_scan \
     --port 8008 --particles 50000 --threads 4
 ```
@@ -39,7 +39,7 @@ Run from a clone without installing the package, the same command is:
 ```bash
 cd <repo>
 PYTHONPATH=$PWD OMP_NUM_THREADS=4 python -u -m htu_twin_apps.twin_viewer.server 26_0929 26_1001 \
-    --root <data root> --source htu_twin_apps/twin_viewer/twin-fit-values.json \
+    --root <data root> --source htu_twin_apps/twin_viewer/fits/aline_slit_spectrometer_free_scale.json \
     --fbpic <data root>/simulations/htu_den_scan --port 8008 --particles 50000 --threads 4
 ```
 
@@ -53,9 +53,15 @@ of day folders. Only those days' folders are read: nothing searches the data tre
 offers the fbpic runs in DIR (`*_diags/*/data*.h5`) as sources (below); `--datasets FILE`
 replaces the list of days and datasets.
 
-`twin-fit-values.json` is the result of the 17-step fit chain traced in
-[`lpa_source/provenance`](../lpa_source/provenance/slit_a_rescore_provenance.md), which also has a
-script that reruns it. `--source` takes any fit's saved source in that format, such as one of
+The fits are in [`fits/`](fits/README.md), which describes how each was made, its assumptions
+and the command that starts the viewer with it. Every fit there is offered in the page's source
+menu, each with its own LPA source, line corrections and spectrometer calibration (an fbpic beam
+runs with the first fit's); `--source` chooses the fit offered first, by default
+`fits/aline_slit_spectrometer_free_scale.json`, the A-line and spectrometer fit made together
+with the spectrometer cameras' scales free. A fit's `spectrometer` holds the cameras' scales and
+zeros, applied to the twin's spectrometer image; `--spectrometer-scale S1,S2` and
+`--spectrometer-zero Z1,Z2` replace the first fit's. `--source` also takes a fit's saved source
+from elsewhere in that format, added to the menu, such as one of
 2026-10-01's population fits (`oct1_high_fbpic_1.10.json`, written by a joint fit of Scan014's two
 populations). Such a file also holds `oct1_energy_label_scale`, which the viewer does not use: it
 shows 2026-10-01 on the driver's own energy labels, so a fit made with the labels divided by that
@@ -63,7 +69,8 @@ scale looks shifted in energy by it.
 
 Open the port's page (<http://127.0.0.1:8008> above; 8060 by default). Options: `--port N`,
 `--particles N` (default 20000), `--threads N` (torch threads, default 2; one simulation runs at a
-time, with this many cores) and `--source FILE` (a fit's saved source JSON; required). The page
+time, with this many cores) and `--source FILE` (the fit offered first; default
+`fits/aline_slit_spectrometer_free_scale.json`). The page
 opens a dataset, step and source from the URL, and keeps the address bar at the view as you move
 (`?scan=26_1001/Scan013&step=1&source=fbpic:3.8e%2B18`; `step` counts from 1, `source` is left out
 for the first source), so a reload or a link returns to the same view.
@@ -141,10 +148,11 @@ the remaining steps of the dataset on view.
   driver's own (Cam1 starts at 51.6 MeV, 0.948 of 09-29's early axis): not verified, since that
   day has no scans to compare labels against.
 - 2026-10-01 settings the fit never saw: S1V (+0.5 A, with the twin's own calibration, probably far
-  too strong as S1H's was: at full strength the twin's beam sits about 9 AngleAxis units above the
-  measured one, and near 0 at about 7% of it) and the slit (not logged: assumed out).
-- The twin's AngleAxis scale is not the data's, so compare the two images' shapes, not their
-  vertical extent.
+  too strong as S1H's was) and the slit (not logged: assumed out).
+- The twin's spectrometer AngleAxis is multiplied by each camera's scale and shifted by its zero,
+  from the fit's file or `--spectrometer-scale` and `--spectrometer-zero`. The default fit's
+  scales (about -0.31) are fitted, not explained (see `fits/README.md`); a fit with none
+  (`fits/aline_slit.json`) shows the twin's own AngleAxis, which does not match the data's.
 - The twin's A-line spot is centred on its own centroid, so no twin centroid is shown: comparing
   centroids needs the camera zeros the A-line fit finds per scan.
 - 20,000 particles: the twin's images are noisy; raise `--particles` for smoother ones.

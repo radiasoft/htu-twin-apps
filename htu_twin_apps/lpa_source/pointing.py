@@ -4,7 +4,13 @@ HTU's spectrometer cameras record, per shot, a vertical profile (`UC_BCaveMagSpe
 against an "AngleAxis") and a spectrum (`-interpSpec`, in MeV). The spectrometer's LabVIEW driver
 (GEECS-Device-Drivers `MagSpecCamera`) makes the AngleAxis from each pixel's vertical position on
 the screen divided by the "total path" of that pixel's momentum in its trajectory calibration
-file: an apparent angle, through the magnet's vertical optics. In the scans that step one EMQ
+file: an apparent angle, through the magnet's vertical optics. Measured on Scan025 (2026-11-16, the
+beam's centroid in the driver's interpolated image against its raw row, per energy band, across
+the scan's steps): AngleAxis = (centre row - row) x pixel size / total path, to about 20% (Cam1
+0.39 to 0.59 mrad per row against 0.48 to 0.51 expected, Cam2 0.34 to 0.39 against 0.38 to 0.43;
+correlations -0.9 to -0.999), positive towards the top of the camera's frame (`CameraFlipped` is
+off), its zero within a row of the camera calibration file's `Y center pixel` on Cam1 (73.5) and
+about 4.5 rows above it on Cam2 (75.5). In the scans that step one EMQ
 while the spectrometer records (Scans 025, 028 and 030 on 2026-09-29), the profile's centroid and
 width move with the EMQ current, which depends on where the beam is, vertically, in the EMQ
 triplet.
@@ -20,12 +26,25 @@ particles are then projected (`projection`):
   "Dutch magnet"): each particle's vertical screen position from the per-momentum map at its
   momentum over the field (`magspec_b`, a twin machine-state key, 0.825 T by default; the field
   was not logged), divided by that momentum's total path in the same trajectory file, as the
-  driver does. The result is in mrad, the AngleAxis's own units if that reading of the driver is
-  right (the AngleAxis spans about +-23 mrad, the screen's height over a total path of about
-  0.5 m); a fitted scale near +-1 would confirm it. As on the camera, only particles within the
+  driver does. The maps begin with a drift ahead of the trajectory file's reference plane (the
+  twin's MagSpec entrance; at the highest momentum, where the magnet barely bends, a map is a
+  2.684 m drift where the total path is 0.715 m): the particles are drifted back by that
+  difference (`upstream_drift_m`, 1.970 m) before the map. The twin's own `map_to_screens` does
+  not (2026-11-16), so its side screen magnifies vertical angles 6 to 10 times; this projection
+  computes the drift itself and needs nothing of the twin beyond its calibration. The result is in mrad, the AngleAxis's own definition (above). Each
+  camera's scale relating the two is fitted all the same: the A-line and spectrometer fitted
+  together (`aline_vertical`, scale free) find about -0.31, which the driver does not explain;
+  its sign depends also on whether the top of a camera's frame is up in the lab. As on the camera, only particles within the
   camera's AngleAxis range count: the beam's strongly mis-focused tail lands off the screen.
+  The particles are histogrammed onto the camera's AngleAxis, so the twin's profile and the
+  camera's are measured alike.
 - `"stand-in"`: `Y = y + d y'` at the spectrometer entrance, with `d` in DISTANCES_M, the best
   `d` per evaluation (what the fit used before the spectrometer was modelled).
+
+A profile's centroid and rms, measured and predicted, count only its bins above THRESHOLD of its
+peak, as the A-line's spots do (`aline.spot`): the measured profiles have broad, nearly constant
+wings, which held the whole profile's rms at 3 to 4.5 whatever the EMQ current (fitted as a
+resolution floor of about 3), while the core's rms swings by up to 4 times across a scan.
 
 Per camera, a scale `a`, a zero `b` and a resolution floor `r0` relate the prediction to the
 measurement (`centroid = a C + b`, `rms^2 = a^2 R^2 + r0^2`); both cameras' scales are given one
@@ -48,6 +67,7 @@ import functools
 import numpy
 import pathlib
 
+from htu_twin_apps import machine_state as htu_machine_state
 from htu_twin_apps.lpa_source import scans as htu_scans
 
 CAMERAS = ("Cam1", "Cam2")
@@ -67,6 +87,8 @@ PROJECTIONS = ("spectrometer", "stand-in")
 RANGE_CHI2 = 3.53
 # Spectrometer scans that step one EMQ, by scan folder name.
 SCANS = ("Scan025", "Scan028", "Scan030")
+# A profile's bins below this fraction of its peak are left out of its centroid and rms.
+THRESHOLD = 0.1
 # Shots below this percentile of a step's profile sums are left out of its per-shot errors.
 WEAK_SHOT_PERCENTILE = 20
 
@@ -96,10 +118,10 @@ class PointingFit:
 class Profile:
     """A step's mean vertical profile on one camera, and that camera's mean spectrum.
 
-    `angle_range` is the camera's AngleAxis range (min, max): what its screen and view take in.
+    `angle` is the camera's AngleAxis, its bins' centers: what its screen and view take in.
     """
 
-    angle_range: tuple
+    angle: numpy.ndarray
     centroid: float
     centroid_error: float
     energy_mev: numpy.ndarray
@@ -213,7 +235,7 @@ def measured(
     return [
         Step(
             cameras={x: c[x][j] for x in CAMERAS},
-            machine_state=htu_scans.machine_state(
+            machine_state=htu_machine_state.from_geecs(
                 [r for r, m in zip(rows, n) if m == i]
             ),
         )
@@ -309,7 +331,7 @@ def predict(
         rv[n] = []
         for s in steps:
             m = {
-                k: (emq_sign * v if k in htu_scans.NOMINAL_EMQ else v)
+                k: (emq_sign * v if k in htu_machine_state.EMQ else v)
                 for k, v in s.machine_state.items()
             }
             m = {**m, **twin.without_slit(machine_state)}
@@ -364,17 +386,18 @@ def screen_angles(transported, mask: numpy.ndarray, field_t: float) -> numpy.nda
     """
     from htu_twin_apps.lpa_source import source
 
-    c, p_table, path = _spectrometer()
+    c, d, l = _spectrometer()
     e = transported.energy_mev[mask]
     p = numpy.sqrt(numpy.maximum(e**2 - source.ELECTRON_MASS_MEV**2, 0)) / field_t
     # POSIT: htu.magspec.DutchCalibration.map_to_screens' vertical map: coordinates in m and rad
-    # at its reference plane (the twin's MagSpec entrance, END_ELEMENT's exit), the per-momentum
-    # coefficients interpolated at p / B, y_f the sum over its exponents' monomials
+    # at its reference plane (the twin's MagSpec entrance, END_ELEMENT's exit), here drifted back
+    # by upstream_drift_m, the per-momentum coefficients interpolated at p / B, y_f the sum over
+    # its exponents' monomials
     v = numpy.stack(
         [
-            transported.x_mm[mask] * 1e-3,
+            (transported.x_mm[mask] - d * transported.xp_mrad[mask]) * 1e-3,
             transported.xp_mrad[mask] * 1e-3,
-            transported.y_mm[mask] * 1e-3,
+            (transported.y_mm[mask] - d * transported.yp_mrad[mask]) * 1e-3,
             transported.yp_mrad[mask] * 1e-3,
         ],
         axis=1,
@@ -387,7 +410,16 @@ def screen_angles(transported, mask: numpy.ndarray, field_t: float) -> numpy.nda
     # POSIT: HTU's Cam1 and Cam2 view the trajectory file's side screen (the twin's
     # docs/magspec-design.md crosswalk), which takes momenta up to p_side_max
     k = (p >= c.p_mev[0]) & (p <= c.p_side_max)
-    return numpy.where(k, y / numpy.interp(p, p_table, path) * 1e3, numpy.nan)
+    return numpy.where(k, y / numpy.interp(p, c.p_mev[: c.n_rows], l) * 1e3, numpy.nan)
+
+
+def upstream_drift_m() -> float:
+    """The drift [m] HTU's spectrometer maps begin with ahead of their reference plane.
+
+    The highest-momentum map is a drift (the magnet barely bends it): its (y|b), less that
+    momentum's total path to the screen in the trajectory file.
+    """
+    return _spectrometer()[1]
 
 
 def _camera_fits(scans: dict, predictions: dict, camera: str, d: float):
@@ -456,19 +488,17 @@ def _profiles(
         )
     x = d[0][0, :, 0]
     y = numpy.clip(d[0][[d[1][j] for j in i], :, 1], 0, None)
-    m = y.mean(axis=0)
-    c = float((m * x).sum() / m.sum())
+    c, r = _thresholded(x, y.mean(axis=0))
     w = y.sum(axis=1)
     k = w > numpy.percentile(w, WEAK_SHOT_PERCENTILE)
-    pc = (y[k] * x).sum(axis=1) / w[k]
-    pr = numpy.sqrt((y[k] * (x - pc[:, None]) ** 2).sum(axis=1) / w[k])
+    s = numpy.array([_thresholded(x, v) for v in y[k]])
     return Profile(
-        angle_range=(float(x.min()), float(x.max())),
+        angle=x,
         centroid=c,
-        centroid_error=float(pc.std() / numpy.sqrt(k.sum())),
+        centroid_error=float(s[:, 0].std() / numpy.sqrt(k.sum())),
         energy_mev=htu_scans.energy_axis(folder, camera, axis_start_mev),
-        rms=float(numpy.sqrt((m * (x - c) ** 2).sum() / m.sum())),
-        rms_error=float(pr.std() / numpy.sqrt(k.sum())),
+        rms=r,
+        rms_error=float(s[:, 1].std() / numpy.sqrt(k.sum())),
         spectrum=numpy.clip(e[0][[e[1][j] for j in i], :, 1], 0, None).mean(axis=0),
     )
 
@@ -496,10 +526,15 @@ def _projected(transported, profile: Profile, projection: str, field_t: float) -
     w = transported.charge_pc[a] * r[i]
     if projection == "spectrometer":
         y = screen_angles(transported, a, field_t)
-        # as on the camera: only what lands within its AngleAxis range is in the profile
+        # as on the camera: only what lands within its AngleAxis bins is in the profile
+        x = profile.angle
+        e = numpy.r_[
+            1.5 * x[0] - 0.5 * x[1], (x[1:] + x[:-1]) / 2, 1.5 * x[-1] - 0.5 * x[-2]
+        ]
         with numpy.errstate(invalid="ignore"):
-            k = (y >= profile.angle_range[0]) & (y <= profile.angle_range[1])
-        return {"spectrometer": _moments(y[k], w[k])}
+            k = numpy.isfinite(y)
+        h, _ = numpy.histogram(y[k], e, weights=w[k])
+        return {"spectrometer": _thresholded(x, h)}
     return {
         d: _moments(transported.y_mm[a] + d * transported.yp_mrad[a], w)
         for d in DISTANCES_M
@@ -524,22 +559,42 @@ def _source(source, values):
 
 @functools.cache
 def _spectrometer() -> tuple:
-    """The twin's spectrometer calibration, and its trajectory file's momenta [MeV/c at 1 T] and
-    total paths [m] (DutchCalibration does not keep the paths)."""
+    """(calibration, upstream drift [m], total paths [m]): the twin's spectrometer calibration
+    (`htu.magspec.DutchCalibration`), the drift its maps begin with (`upstream_drift_m`), and
+    its rows' total paths from the trajectory file (the calibration does not keep them).
+    """
     import htu.magspec
 
+    c = htu.magspec.DutchCalibration()
     with open(htu.magspec.TRJ_FILE, newline="") as f:
         r = [x for x in csv.reader(f, delimiter="\t") if x and x[0].strip()]
     h = [x.strip() for x in r[0]]
-    p, t = h.index("momentum [MeV/c]"), h.index("total path [m]")
-    v = numpy.array([[float(x[p]), float(x[t])] for x in r[1:]])
-    return htu.magspec.DutchCalibration(), v[:, 0], v[:, 1]
+    k = h.index("total path [m]")
+    # POSIT: DutchCalibration's rows are the trajectory file's first n_rows (its __init__)
+    l = numpy.array([float(x[k]) for x in r[1 : c.n_rows + 1]])
+    e = [tuple(x) for x in c.exponents.tolist()]
+    i = c.n_rows - 1
+    # POSIT: exponents are (x, a, y, b); coeff_y the vertical map's coefficients
+    y = c.coeff_y[i, e.index((0, 0, 1, 0))]
+    if abs(y - 1.0) > 1e-3:
+        raise ValueError(f"highest-momentum map is not a drift: (y|y)={y}")
+    return c, float(c.coeff_y[i, e.index((0, 0, 0, 1))] - l[i]), l
 
 
 def _stepped(steps: list, step: Step) -> float:
     """The setting that changes across `steps`, at `step`: the scanned EMQ's current."""
     k = max(
-        htu_scans.NOMINAL_EMQ,
+        htu_machine_state.EMQ,
         key=lambda n: numpy.ptp([s.machine_state.get(n, 0.0) for s in steps]),
     )
     return step.machine_state[k]
+
+
+def _thresholded(angle: numpy.ndarray, profile: numpy.ndarray) -> tuple:
+    """(centroid, rms) of `profile` on `angle`, counting only its bins above THRESHOLD of its
+    peak; NaN for an empty profile."""
+    if not profile.max() > 0:
+        return (numpy.nan, numpy.nan)
+    return _moments(
+        angle, numpy.where(profile > THRESHOLD * profile.max(), profile, 0.0)
+    )

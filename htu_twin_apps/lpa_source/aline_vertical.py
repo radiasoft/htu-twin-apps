@@ -1,17 +1,22 @@
 """Fit the A-line scans and the spectrometer EMQ scans' vertical profiles together.
 
-The A-line fit (`aline`) and the spectrometer's vertical profiles (`pointing`) disagree on the
-EMQs' vertical offsets: the A-line spots want 0.6 to 0.9 mm, with which the twin's beam swings
-across the spectrometer's AngleAxis where the measured beam stays put. Fitted together, with one
-set of knobs for both, they either find one machine that satisfies both or show that the twin
-cannot.
+The A-line fit (`aline`) and the spectrometer's vertical profiles (`pointing`) disagree when
+fitted apart: the A-line spots want a vertical divergence of about 1.3 mrad and EMQ offsets of 0.6
+to 0.9 mm, with which the twin's beam swings and widens across the spectrometer's AngleAxis where
+the measured beam barely moves; the profiles alone want about 0.4 mrad, with which the A-line spots
+are a third of their measured size. Fitted together, with one set of knobs for both, they fit
+only with the cameras' scales free, at about -0.31 (the twin viewer's default fit,
+`twin_viewer/fits/aline_slit_spectrometer_free_scale.json`); with the scales held at 1 the A-line
+part is about twice its own best. That factor is not explained (see `pointing`).
 
 The objective is `aline`'s (the A-line chi^2 with the camera's zeros and floor fitted, plus
 Scan019's slit term) plus `pointing`'s vertical chi^2 over `pointing.SCANS` through the twin's
 spectrometer model (the slit out, each step reweighted to its spectrum). Each spectrometer
 camera's scale, zero and resolution floor are fitted (`pointing.score`, SCALE "free"), or the
 scale is held at a number (the twin's AngleAxis taken as the driver's when 1) and the zero and
-floor fitted. Each step is tracked in a worker of one pool.
+floor fitted. Each step is tracked in a worker of one pool. The saved fit holds, beside the
+source and machine state, each camera's scale, zero and floor (`spectrometer`: Cam1's, Cam2's),
+which the twin viewer applies to its spectrometer image.
 
 Run as `python -m htu_twin_apps.lpa_source.aline_vertical <day> [--root DIR] --source <saved source>
 ...` (a day name such as `26_0929`, or a day folder's path).
@@ -124,7 +129,7 @@ def fit(
 
 
 def main():
-    from htu_twin_apps.lpa_source import slit, source as lpa_source
+    from htu_twin_apps.lpa_source import pointing, slit, source as lpa_source
 
     p = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     p.add_argument(
@@ -184,7 +189,19 @@ def main():
     )
     if a.save:
         a.save.write_text(
-            json.dumps({"source": dataclasses.asdict(s), "machine_state": m}, indent=1)
+            json.dumps(
+                {
+                    "source": dataclasses.asdict(s),
+                    "machine_state": m,
+                    # POSIT: parts["cameras"][c] is (chi^2, scale, zero, floor), as pointing.score
+                    # and _fixed_scale give
+                    "spectrometer": {
+                        x: [parts["cameras"][c][i] for c in pointing.CAMERAS]
+                        for x, i in (("scale", 1), ("zero", 2), ("floor", 3))
+                    },
+                },
+                indent=1,
+            )
         )
         print(f"saved: {a.save}", flush=True)
 

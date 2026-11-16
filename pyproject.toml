@@ -27,6 +27,9 @@ readme = "README.md"
 requires-python = ">=3.10"
 
 [project.optional-dependencies]
+dev = [
+    "pytest",
+]
 # also needs the HTU twin's `htu` package (geecs-lume-twin), which is not on PyPI
 lpa-source = [
     "cheetah-accelerator",
@@ -44,7 +47,7 @@ htu-twin-viewer = "htu_twin_apps.twin_viewer.server:main"
 Homepage = "https://github.com/radiasoft/htu-twin-apps"
 
 [tool.setuptools.package-data]
-htu_twin_apps = ["*/static/**"]
+htu_twin_apps = ["*/static/**", "twin_viewer/*.json", "twin_viewer/fits/*.json"]
 
 [tool.setuptools.packages.find]
 include = ["htu_twin_apps*"]

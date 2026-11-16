@@ -9,6 +9,20 @@ is a subpackage of `htu_twin_apps` with its own README and console script; they 
 | [Shot viewer](htu_twin_apps/shot_viewer/README.md) | `htu-shot-viewer` | Browse HTU scans shot by shot in the browser: scalars, images, machine settings and a beamline schematic |
 | [Twin viewer](htu_twin_apps/twin_viewer/README.md) | `htu-twin-viewer` | The HTU twin with the fitted LPA source at a recorded scan's settings, step by step, beside the measurement |
 
+## Shared modules
+
+| Module | What it does |
+|---|---|
+| `htu_twin_apps.machine_state` | The transport line's machine state, independent of the simulator: every setting (logged by GEECS) and correction (fitted) with its unit; a scan step's settings (`from_geecs()`), a setting's EPICS name (`pv_name()`), and the state a simulator takes (`to_twin()`) |
+| `htu_twin_apps.pv_access` | The settings by machine-state key, live over EPICS PV Access (`Live`: `get()`, `monitor()`; the twin's PVs or HTU's) or from a recorded scan (`archive()`) |
+| `htu_twin_apps.days` | A day's folder from its name (see "Data") |
+
+[`docs/htu-pv-translation.md`](docs/htu-pv-translation.md) maps the names of the twin's PVs, GEECS's
+devices and the machine state, and records what is known of their calibrations.
+[`docs/htu-twin-questions.md`](docs/htu-twin-questions.md) is the short list for the GEECS team: a
+bug in the twin's spectrometer model and the questions we most need answered, with the rest in
+[`docs/htu-twin-other-questions.md`](docs/htu-twin-other-questions.md).
+
 ## Install
 
 ```bash
@@ -33,6 +47,17 @@ HTU saves a day as `<root>/Y2026/09-Sep/26_0929/`, with `analysis/` (the scalar 
 `s<N>.txt`) and `scans/ScanNNN/` below it: `ScanDataScanNNN.txt`, `ScanInfoScanNNN.ini` and one
 folder of HDF5 stacks per device. The day's folder is built from its name, so only the days asked
 for are read.
+
+## Tests
+
+```bash
+.venv/bin/pip install -e '.[dev]'
+.venv/bin/pytest tests
+```
+
+The live PV tests start the HTU twin's server (`python -m htu.serve`), so they need the twin
+(`htu`, from geecs-lume-twin) and `p4p`; they are skipped without them. The test of a recorded
+scan needs the data: set `HTU_DATA_ROOT` to the folder holding `Y2026`.
 
 ## Adding an app
 

@@ -1,11 +1,13 @@
 """HTU twin viewer: step through a recorded HTU scan and see the twin's prediction beside the data.
 
-Run `htu-twin-viewer <day> ... --source twin-fit-values.json [--root DIR] [--fbpic DIR] [--port
+Run `htu-twin-viewer <day> ... [--source FIT] [--root DIR] [--fbpic DIR] [--port
 N]` and open http://127.0.0.1:8060. The days are the arguments: day names such as `26_0929`
 (below `--root`) or day folders' paths (`htu_twin_apps.days`). Only those days'
 folders are read, and nothing is searched for. The twin is `geecs-lume-twin` as
 `htu_twin_apps.lpa_source` drives it (its PMQ fringe fields, the slit's jaws and blade, the fitted
-calibration corrections), with the LPA source and corrections of the best fit.
+calibration corrections), with the LPA source and corrections of a fit: each file in FITS_DIR
+(`fits/`, described in its README) is offered, and `--source` chooses the one offered first
+(DEFAULT_SOURCE by default; a file elsewhere is added).
 
 The datasets are the scans of the given days. Each scan with raw data that saved both
 spectrometer cameras' `-interpSpec` is one, a spectrum (or, with their `-ImageInterp` as well, the
@@ -30,14 +32,15 @@ would see it, `aline.render`), or the spectrometer's spectrum and its energy aga
 image. A step is simulated when first asked for and cached, and the rest of its dataset is
 simulated in the background.
 
-The twin's source is the fit's (FIT_SOURCE) or, with `--fbpic DIR`, the beam at the plasma exit
-of an fbpic run below DIR (each `*_diags` folder's last `data*.h5`, `source.from_fbpic`), chosen
-per request (`source=`). The fit's corrections to the line apply with either.
+The twin's source, chosen per request (`source=`), is a fit's (`fit:<file name's stem>`: its
+LPASource, corrections to the line and spectrometer cameras' calibration) or, with `--fbpic DIR`,
+the beam at the plasma exit of an fbpic run below DIR (each `*_diags` folder's last `data*.h5`,
+`source.from_fbpic`), run with the first fit's corrections and calibration.
 
 A step can be run with edits (`/api/step?...&edits={"EMQ1H": 1.2, "source.divergence_x_mrad": 4}`):
 values that replace what the twin runs with. The keys are the step's magnet currents
 (STEP_KNOBS, the current the twin's magnet sees: the fitted scale is not applied to an edited
-one), the fit's corrections (MACHINE_KNOBS) and, with the fit's source, the source's knobs
+one), the fit's corrections (MACHINE_KNOBS) and, with a fit's source, the source's knobs
 (SOURCE_KNOBS, prefixed `source.`). Any other key is refused.
 
 The measured spectrometer image is the two cameras' ImageInterp side by side (Cam1 below the
@@ -45,6 +48,16 @@ seam, where Cam2's energy axis starts, Cam2 above). Each camera's image is in it
 AngleAxis zero, so the stitch can be corrected (`scale=1`, `align=1`, both by default): each
 camera's image scaled to its `-interpSpec` (the camera's calibrated spectrum), and Cam2 shifted in
 AngleAxis so that its centroid within SEAM_WINDOW_MEV of the seam matches Cam1's, per step.
+The twin's spectrometer image has its AngleAxis multiplied by each camera's scale and each
+camera's zero added (where the twin's axis falls on Cam1's and Cam2's AngleAxis); the cameras'
+windows cut the twin's particles after it. Both come from each fit's file (its `spectrometer`:
+`scale` and `zero`, Cam1's and Cam2's, as `aline_vertical` saves them), else 1 and 0;
+`--spectrometer-scale` and `--spectrometer-zero` (S1,S2 and Z1,Z2, or one value for both)
+replace them for the first fit. The default fit,
+DEFAULT_SOURCE, is the A-line and spectrometer fit together with the cameras' scales free, which
+finds the cameras' AngleAxis about -0.31 times the twin's, a factor the twin's map does not
+explain. With `align`, the measured Cam2 is in Cam1's frame, so the twin's Cam2 is moved to
+Cam1's zero as well.
 
 :copyright: Copyright (c) 2026 RadiaSoft LLC.  All Rights Reserved.
 :license: http://www.apache.org/licenses/LICENSE-2.0.html
@@ -67,11 +80,19 @@ import threading
 import urllib.parse
 
 from htu_twin_apps import days
+from htu_twin_apps import machine_state as htu_machine_state
 from htu_twin_apps.lpa_source import scans as htu_scans
 
 # The days and recorded scans the viewer offers (see the module's docstring).
 DATASETS_FILE = pathlib.Path(__file__).resolve().parent / "datasets.json"
 DEFAULT_PORT = 8060
+# The fit the viewer shows unless given `--source`.
+DEFAULT_SOURCE = (
+    pathlib.Path(__file__).resolve().parent
+    / "fits/aline_slit_spectrometer_free_scale.json"
+)
+# The fits offered, each `*.json` here.
+FITS_DIR = DEFAULT_SOURCE.parent
 # A day's settings the datasets file does not give: the driver's own energy labels, the slit out.
 DAY_CONFIG = {
     "energy_axis": "recorded",
@@ -79,7 +100,8 @@ DAY_CONFIG = {
     "note": "energies as the driver labelled them (not verified)",
 }
 # The fit's source's id among the sources (`source=`).
-FIT_SOURCE = "fit"
+# A fit's source id: this and its file name's stem.
+FIT_PREFIX = "fit:"
 # The fit's machine-state corrections an edit may replace.
 MACHINE_KNOBS = (
     "aline_um_per_px",
@@ -146,7 +168,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         json.loads(q.get("edits", ["{}"])[0]),
                         q.get("scale", ["1"])[0] == "1",
                         q.get("align", ["1"])[0] == "1",
-                        q.get("source", [FIT_SOURCE])[0],
+                        q.get("source", [None])[0],
                     )
                 )
             return self._static(u.path)
@@ -191,19 +213,13 @@ class Viewer:
         particles: int,
         datasets_path: pathlib.Path,
         fbpic: pathlib.Path | None,
+        spectrometer_scale: tuple | None = None,
+        spectrometer_zero: tuple | None = None,
     ):
-        from htu_twin_apps.lpa_source import aline, source
-
         self.day_dirs = dict(day_dirs)
-        j = json.loads(source_path.read_text())
-        self.machine_state = dict(j["machine_state"])
-        if aline.PIXEL_KEY not in self.machine_state:
-            # a finished A-line fit saves no pixel size; its log has it
-            self.machine_state[aline.PIXEL_KEY] = _logged_pixel(source_path)
-        self.source = dataclasses.replace(
-            source.LPASource(**j["source"]), num_particles=particles
-        )
-        self.source_label = source_path.name
+        self.fits = _fits(source_path, particles, spectrometer_scale, spectrometer_zero)
+        # the first fit's: an fbpic beam runs with its corrections
+        self.first_fit = next(iter(self.fits))
         m = json.loads(datasets_path.read_text())
         self.day_config = {
             d: {**DAY_CONFIG, **m["days"].get(d, {})} for d in self.day_dirs
@@ -212,9 +228,9 @@ class Viewer:
         self.entries = _entries(
             self.day_dirs, self._scans, self.day_config, m["datasets"]
         )
-        # id: (label, path); the fit's has no file of particles
+        # id: (label, path); a fit's has no file of particles
         self.sources = {
-            FIT_SOURCE: (f"fitted ({source_path.name})", None),
+            **{k: (f.label, None) for k, f in self.fits.items()},
             **_fbpic_runs(fbpic),
         }
         self._cache = {}
@@ -224,7 +240,7 @@ class Viewer:
         self._lock = threading.Lock()
         # one simulation at a time: requests and the background share the twin's line cache
         self._compute = threading.Lock()
-        self._particles = None
+        self._particles = {}
         self._wanted = None
         self._worker = None
 
@@ -239,9 +255,9 @@ class Viewer:
         }
 
     def datasets(self) -> dict:
-        """The datasets offered, the sources and the fit the twin runs with."""
+        """The datasets offered, the sources and the fit an fbpic beam runs with."""
         return {
-            "source": self.source_label,
+            "source": self.fits[self.first_fit].label,
             "sources": [{"id": k, "label": v[0]} for k, v in self.sources.items()],
             "datasets": [
                 {"scan": n, "day": e["day"], "kind": e["kind"], "title": e["title"]}
@@ -257,12 +273,13 @@ class Viewer:
         edits: dict,
         scale: bool = True,
         align: bool = True,
-        source: str = FIT_SOURCE,
+        source: str | None = None,
     ) -> dict:
         """The twin's output and the measurement at dataset `scan`'s step `index` with `edits`
         and `source` (see the module's docstring; computed if need be), the spectrometer image's
         stitch corrected as `scale` and `align` say, and the rest of the dataset started in the
-        background with the same edits and source."""
+        background with the same edits and source (None: the first fit)."""
+        source = source or self.first_fit
         n = self._entry(scan)
         d = self._dataset(n)
         if not 0 <= index < len(d["steps"]):
@@ -270,17 +287,21 @@ class Viewer:
         if source not in self.sources:
             raise ValueError(f"source {source!r} not one of {sorted(self.sources)}")
         e = _edits(edits)
-        if source != FIT_SOURCE and any(k.startswith("source.") for k, _ in e):
-            raise ValueError("source edits apply to the fitted source only")
+        if source not in self.fits and any(k.startswith("source.") for k, _ in e):
+            raise ValueError("source edits apply to a fit's source only")
         rv = self._step(n, index, e, source)
         self._background(n, e, source)
         if d["kind"] != "magspec":
             return rv
         i, k = _stitched(d["steps"][index]["cameras"], scale, align)
-        # the cached result is shared: a copy with this stitch
+        # the cached result is shared: a copy with this stitch, and the twin's image in its frame
+        w = {x: v for x, v in rv["twin"].items() if x != "image_aligned"}
+        if align:
+            w["image"] = rv["twin"]["image_aligned"]
         return {
             **rv,
             "measured": {**rv["measured"], "image": i},
+            "twin": w,
             "stitch": {"scale": scale, "align": align, "cam2_shift": k},
         }
 
@@ -329,36 +350,39 @@ class Viewer:
             return self._datasets[name]
 
     def _edited(self, edits: tuple, source: str) -> tuple:
-        """(source, particles, machine_state, step_state): the fit's with `edits` applied; the
-        source None for an fbpic run's."""
+        """(source, particles, machine_state, step_state, fit): `source`'s with `edits` applied,
+        and the fit whose corrections and spectrometer calibration it runs with; the source None
+        for an fbpic run's."""
         from htu_twin_apps.lpa_source import source as lpa_source, twin
 
         e = dict(edits)
-        if source == FIT_SOURCE:
+        f = self.fits.get(source)
+        if f is not None:
             s = dataclasses.replace(
-                self.source,
+                f.source,
                 **{k[7:]: v for k, v in e.items() if k.startswith("source.")},
             )
-            if s == self.source:
-                p = self._sampled()
+            if s == f.source:
+                p = self._sampled(source)
             else:
                 with self._lock:
                     if self._edited_particles[0] != s:
                         self._edited_particles = (s, lpa_source.particles(s))
                     p = self._edited_particles[1]
         else:
+            f = self.fits[self.first_fit]
             s = None
             with self._lock:
                 if source not in self._fbpic:
                     self._fbpic[source] = lpa_source.from_fbpic(self.sources[source][1])
                 p = self._fbpic[source]
-        m = {**self.machine_state, **{k: v for k, v in e.items() if k in MACHINE_KNOBS}}
+        m = {**f.machine_state, **{k: v for k, v in e.items() if k in MACHINE_KNOBS}}
         t = {k: v for k, v in e.items() if k in STEP_KNOBS}
         for k in t:
             if k in twin.SCALES:
                 # an edited current is what the twin's magnet sees
                 m[twin.SCALES[k]] = 1.0
-        return s, p, m, t
+        return s, p, m, t, f
 
     def _entry(self, scan: str) -> str:
         """The dataset named `scan`: its full name, or a scan folder name only one day has."""
@@ -375,13 +399,14 @@ class Viewer:
             return (self.day_dirs[e["day"]] / "analysis" / "s16.txt").is_file()
         return e["scan"] in self._scans[e["day"]]
 
-    def _sampled(self):
+    def _sampled(self, fit: str):
+        """Fit `fit`'s source's particles, sampled when first asked for."""
         from htu_twin_apps.lpa_source import source
 
         with self._lock:
-            if self._particles is None:
-                self._particles = source.particles(self.source)
-            return self._particles
+            if fit not in self._particles:
+                self._particles[fit] = source.particles(self.fits[fit].source)
+            return self._particles[fit]
 
     def _step(self, scan: str, index: int, edits: tuple, source: str) -> dict:
         key = (scan, index, edits, source)
@@ -393,8 +418,8 @@ class Viewer:
             with self._lock:
                 if key in self._cache:
                     return self._cache[key]
-            s, p, m, t = self._edited(edits, source)
-            rv = _simulate(d, index, p, m, t)
+            s, p, m, t, f = self._edited(edits, source)
+            rv = _simulate(d, index, p, m, t, f.scale, f.zero)
             rv["settings"] = _settings(
                 d,
                 index,
@@ -429,7 +454,13 @@ def main():
         type=pathlib.Path,
         help="the data root, the folder holding Y2026",
     )
-    p.add_argument("--source", type=pathlib.Path, help="the fit's saved source (JSON)")
+    p.add_argument(
+        "--source",
+        type=pathlib.Path,
+        default=DEFAULT_SOURCE,
+        help="the fit offered first (JSON; default fits/aline_slit_spectrometer_free_scale.json;"
+        + " every fit in fits/ is offered)",
+    )
     p.add_argument(
         "--datasets",
         type=pathlib.Path,
@@ -441,6 +472,17 @@ def main():
     )
     p.add_argument("--particles", type=int, default=PARTICLES)
     p.add_argument("--port", type=int, default=DEFAULT_PORT)
+    p.add_argument(
+        "--spectrometer-scale",
+        type=_cameras,
+        help="the first fit's Cam1 and Cam2 scales of the twin's AngleAxis (S1,S2; default its"
+        + " file's, or 1)",
+    )
+    p.add_argument(
+        "--spectrometer-zero",
+        type=_cameras,
+        help="the first fit's Cam1 and Cam2 AngleAxis zeros (Z1,Z2; default its file's, or 0)",
+    )
     p.add_argument("--threads", type=int, default=2, help="torch threads (default 2)")
     a = p.parse_args()
     try:
@@ -448,15 +490,40 @@ def main():
     except (FileNotFoundError, ValueError) as e:
         p.error(str(e))
     s = a.source
-    if s is None:
-        p.error("no source: give --source")
     import torch
 
     torch.set_num_threads(a.threads)
     global VIEWER
-    VIEWER = Viewer(day_dirs, s, a.particles, a.datasets, a.fbpic)
-    print(f"HTU twin viewer: http://127.0.0.1:{a.port} (source {s})", flush=True)
+    VIEWER = Viewer(
+        day_dirs,
+        s,
+        a.particles,
+        a.datasets,
+        a.fbpic,
+        a.spectrometer_scale,
+        a.spectrometer_zero,
+    )
+    print(
+        f"HTU twin viewer: http://127.0.0.1:{a.port} (fits: "
+        + ", ".join(
+            f"{k} scale {f.scale} zero {f.zero}" for k, f in VIEWER.fits.items()
+        )
+        + ")",
+        flush=True,
+    )
     http.server.ThreadingHTTPServer(("0.0.0.0", a.port), Handler).serve_forever()
+
+
+@dataclasses.dataclass(frozen=True)
+class _Fit:
+    """A fit offered as a source: its label, LPA source, corrections to the line (with the A-line
+    camera's pixel size) and spectrometer cameras' scale and zero (Cam1's, Cam2's)."""
+
+    label: str
+    machine_state: dict
+    scale: tuple
+    source: object
+    zero: tuple
 
 
 def _axis_start(folder: pathlib.Path, labelling: str) -> float | None:
@@ -500,6 +567,16 @@ def _beam_summary(particles) -> str:
         + f"div. {_rms(numpy.asarray(particles['xp']) * 1e3):.1f} / "
         + f"{_rms(numpy.asarray(particles['yp']) * 1e3):.1f} mrad"
     )
+
+
+def _cameras(text: str) -> tuple:
+    """(Cam1's, Cam2's) values from "V1,V2", or "V" for both."""
+    v = tuple(float(x) for x in text.split(","))
+    if len(v) == 1:
+        return v * 2
+    if len(v) != 2:
+        raise argparse.ArgumentTypeError(f"want V1,V2 or V, not {text!r}")
+    return v
 
 
 def _clean(value):
@@ -621,6 +698,36 @@ def _fbpic_runs(directory: pathlib.Path | None) -> dict:
     return {i: v for _, i, v in sorted(rv)}
 
 
+def _fits(first: pathlib.Path, particles: int, scale, zero) -> dict:
+    """{id: _Fit} of `first` and every fit in FITS_DIR, `first` first; `scale` and `zero`, if
+    given, replace `first`'s file's."""
+    from htu_twin_apps.lpa_source import aline, source
+
+    f = [first.resolve()]
+    f += [x for x in sorted(FITS_DIR.resolve().glob("*.json")) if x not in f]
+    rv = {}
+    for i, x in enumerate(f):
+        k = FIT_PREFIX + x.stem
+        if k in rv:
+            raise ValueError(f"two fits named {x.stem}: {x} and another")
+        j = json.loads(x.read_text())
+        m = dict(j["machine_state"])
+        if aline.PIXEL_KEY not in m:
+            # a finished A-line fit saves no pixel size; its log has it
+            m[aline.PIXEL_KEY] = _logged_pixel(x)
+        c = j.get("spectrometer", {})
+        rv[k] = _Fit(
+            label=f"fitted ({x.name})",
+            machine_state=m,
+            scale=tuple((i == 0 and scale) or c.get("scale", (1.0, 1.0))),
+            source=dataclasses.replace(
+                source.LPASource(**j["source"]), num_particles=particles
+            ),
+            zero=tuple((i == 0 and zero) or c.get("zero", (0.0, 0.0))),
+        )
+    return rv
+
+
 def _fmt(value, digits=2):
     return "n/a" if value is None or not math.isfinite(value) else f"{value:.{digits}f}"
 
@@ -644,7 +751,7 @@ def _load(data: pathlib.Path, entry: dict, day: dict) -> dict:
         with open(f, newline="") as x:
             rows = list(csv.DictReader(x, delimiter="\t"))
         m = compare.measured(data, 16)
-        s = {**htu_scans.machine_state(rows), **twin.SCAN016_STATE}
+        s = {**htu_machine_state.from_geecs(rows), **twin.SCAN016_STATE}
         return {
             **rv,
             "rows": [rows],
@@ -773,7 +880,7 @@ def _scanned(rows_by_step: list) -> str | None:
     """The twin key of the logged setting that changes most across the steps, if any changes."""
     if len(rows_by_step) < 2:
         return None
-    s = [htu_scans.machine_state(r) for r in rows_by_step]
+    s = [htu_machine_state.from_geecs(r) for r in rows_by_step]
     k = max(s[0], key=lambda x: numpy.ptp([v.get(x, 0.0) for v in s]))
     return k if numpy.ptp([v.get(k, 0.0) for v in s]) > 0 else None
 
@@ -985,10 +1092,17 @@ def _settings(
 
 
 def _simulate(
-    dataset: dict, index: int, particles, machine_state: dict, step_state: dict
+    dataset: dict,
+    index: int,
+    particles,
+    machine_state: dict,
+    step_state: dict,
+    spectrometer_scale: tuple = (1.0, 1.0),
+    spectrometer_zero: tuple = (0.0, 0.0),
 ) -> dict:
     """The twin's output beside the measurement, and the numbers compared; `step_state`
-    replaces settings the step logged."""
+    replaces settings the step logged; the twin's AngleAxis is multiplied by `spectrometer_scale`
+    and `spectrometer_zero` added (Cam1's, Cam2's)."""
     from htu_twin_apps.lpa_source import aline, compare, fit, twin
 
     s = dataset["steps"][index]
@@ -1048,9 +1162,15 @@ def _simulate(
     }
     if k == "magspec":
         rv["seam_mev"] = dataset["seam_mev"]
-        rv["twin"]["image"] = _spectrometer_image(
-            t, {**s["machine_state"], **step_state, **tw}, dataset["seam_mev"]
-        )
+        for x, a in (("image", False), ("image_aligned", True)):
+            rv["twin"][x] = _spectrometer_image(
+                t,
+                {**s["machine_state"], **step_state, **tw},
+                dataset["seam_mev"],
+                spectrometer_scale,
+                spectrometer_zero,
+                a,
+            )
         rv["image_axes"] = SPECTROMETER_BINS
     return rv
 
@@ -1129,17 +1249,29 @@ def _shot_peaks(
     return rv
 
 
-def _spectrometer_image(transported, machine_state: dict, seam: float) -> numpy.ndarray:
-    """The twin's particles binned like `_magspec_images`: energy against AngleAxis, each
-    camera's window either side of the cameras' `seam` [MeV]."""
+def _spectrometer_image(
+    transported,
+    machine_state: dict,
+    seam: float,
+    scale: tuple = (1.0, 1.0),
+    zero: tuple = (0.0, 0.0),
+    aligned: bool = False,
+) -> numpy.ndarray:
+    """The twin's particles binned like `_magspec_images`: energy against AngleAxis (the twin's
+    times Cam1's or Cam2's `scale`, plus its `zero`), each camera's window either side of the
+    cameras' `seam` [MeV]; if `aligned`, Cam2's then moved to Cam1's zero, as `_stitched`
+    aligns the measured Cam2."""
     import htu.model
     from htu_twin_apps.lpa_source import pointing
 
     (e0, e1, de), (a0, a1, da) = SPECTROMETER_BINS
     f = {**htu.model.DEFAULT_MACHINE_STATE, **machine_state}["magspec_b"]
     k = (transported.charge_pc > 0) & numpy.isfinite(transported.energy_mev)
-    a = pointing.screen_angles(transported, k, f)
     e = transported.energy_mev[k]
+    c = e < seam
+    a = numpy.where(c, scale[0], scale[1]) * pointing.screen_angles(
+        transported, k, f
+    ) + numpy.where(c, zero[0], zero[1])
     w = transported.charge_pc[k]
     c1, c2 = SPECTROMETER_WINDOWS["Cam1"], SPECTROMETER_WINDOWS["Cam2"]
     with numpy.errstate(invalid="ignore"):
@@ -1147,6 +1279,8 @@ def _spectrometer_image(transported, machine_state: dict, seam: float) -> numpy.
             ((e < seam) & (a >= c1[0]) & (a <= c1[1]))
             | ((e >= seam) & (a >= c2[0]) & (a <= c2[1]))
         )
+    if aligned:
+        a = numpy.where(e < seam, a, a + zero[0] - zero[1])
     h, _, _ = numpy.histogram2d(
         a[g],
         e[g],

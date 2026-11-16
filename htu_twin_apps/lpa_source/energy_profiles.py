@@ -27,6 +27,7 @@ import dataclasses
 import numpy
 import pathlib
 
+from htu_twin_apps import machine_state as htu_machine_state
 from htu_twin_apps.lpa_source import scans as htu_scans
 
 # The energy slices' width [MeV].
@@ -182,7 +183,7 @@ def measured(
     return [
         Step(
             cameras={x: c[x][j] for x in CAMERAS},
-            machine_state=htu_scans.machine_state(
+            machine_state=htu_machine_state.from_geecs(
                 [r for r, m in zip(rows, n) if m == i]
             ),
         )

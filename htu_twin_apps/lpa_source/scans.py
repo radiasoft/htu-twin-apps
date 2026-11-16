@@ -1,4 +1,6 @@
-"""Read HTU scans for the source fits: a scan's table, its steps' twin machine state, its stacks.
+"""Read HTU scans for the source fits: a scan's table, its energy axis, its stacks.
+
+A step's machine state is `htu_twin_apps.machine_state.from_geecs()`.
 
 :copyright: Copyright (c) 2026 RadiaSoft LLC.  All Rights Reserved.
 :license: http://www.apache.org/licenses/LICENSE-2.0.html
@@ -25,21 +27,8 @@ CAM1_AXIS_START_MEV = 54.45
 # twin's true energies, fitted to test which of the driver's settings was right (1: the early,
 # CAM1_AXIS_START_MEV; LATE_CAM1_AXIS_START_MEV / CAM1_AXIS_START_MEV: the late).
 ENERGY_LABEL_KEY = "energy_label_scale"
-# Twin machine-state keys of the scan-table columns read as each step's settings.
-GEECS_TO_TWIN = {
-    "U_ChicaneInner Current": "chicane_current",
-    "U_EMQTripletBipolar Current_Limit.Ch1": "EMQ1H",
-    "U_EMQTripletBipolar Current_Limit.Ch2": "EMQ2V",
-    "U_EMQTripletBipolar Current_Limit.Ch3": "EMQ3H",
-    **{f"U_S{i}{p} Current": f"S{i}{p}" for i in range(1, 5) for p in "HV"},
-    **{f"U_VS{i}{p} Current": f"VS{i}{p}" for i in range(1, 9) for p in "HV"},
-}
 # The Cam1 axis start [MeV] of the late setting (Scan025's), the alternative hypothesis.
 LATE_CAM1_AXIS_START_MEV = 45.38
-# The EMQ setpoints [A] of channels a scan does not log (the EMQ scans log only the scanned
-# channel): HTU's nominal settings on 2026-09-29, as logged in Scan022 and given in the data's
-# README. A scan that logs a channel (Scan019 logs all three, at 0) uses its own value.
-NOMINAL_EMQ = {"EMQ1H": 1.5, "EMQ2V": -0.82, "EMQ3H": 0.0}
 
 
 def energy_axis(
@@ -53,17 +42,6 @@ def energy_axis(
     # POSIT: a mis-set driver field scales every camera's axis by the same factor, Cam1's included
     s = CAM1_AXIS_START_MEV if start_mev is None else start_mev
     return rv[0, :, 0].astype(float) * (s / float(c[0, 0, 0]))
-
-
-def machine_state(rows: list) -> dict:
-    """The twin machine state of one step's rows: each logged setting's median, nominal EMQs."""
-    rv = dict(NOMINAL_EMQ)
-    for c, k in GEECS_TO_TWIN.items():
-        v = [number(r.get(c)) for r in rows]
-        v = [x for x in v if x is not None]
-        if v:
-            rv[k] = float(numpy.median(v))
-    return rv
 
 
 def number(text):
