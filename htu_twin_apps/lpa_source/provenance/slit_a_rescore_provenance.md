@@ -2,9 +2,11 @@
 
 ## What this produced in this repository
 
-`slit_a_rescore.json` is the fit result that `htu_twin_apps/twin_viewer/twin-fit-values.json`
-holds: the two files are byte-identical (checked 2026-11-04). The twin viewer reads it with
-`htu-twin-viewer 26_0929 --root <data directory> --source twin-fit-values.json`. This document traces how that
+`slit_a_rescore.json` is the fit result that `htu_twin_apps/twin_viewer/fits/aline_slit.json`
+holds: the two files are byte-identical (checked 2026-11-04, as `twin-fit-values.json`, the
+viewer's default fit until 2026-11-16; the default is now a fit started from it,
+[`joint_free_provenance.md`](joint_free_provenance.md)). The twin viewer reads it with
+`htu-twin-viewer 26_0929 --root <data directory> --source fits/aline_slit.json`. This document traces how that
 file was made, from the NERSC sample through 17 steps, and `rerun_slit_a_rescore.py` in this
 directory reruns the whole chain (writing `slit_a_rescore.json` to a directory you choose).
 
@@ -13,6 +15,22 @@ Reconstructed 2026-11-04 from the fit runs' output directory, its queue scripts 
 day folder, or a day name with `--root`), `$F` the
 directory the fits were written to, and every command runs from the repository root. `compare` is
 `python -u -m htu_twin_apps.lpa_source.compare` (the `htu-lpa-source` entry point).
+
+## Regenerating it
+
+The chain fits the spectrometer's vertical profiles (steps [4] to [6]) through this
+repository's spectrometer projection as it was then: the COSY maps with their upstream drift left
+in and each profile's whole rms. Both changed afterwards (`pointing.upstream_drift_m` and
+`pointing.THRESHOLD`, for the fit that followed, [`joint_free_provenance.md`](joint_free_provenance.md)),
+so `rerun_slit_a_rescore.py` refuses to run those steps on the later code. Run it with this
+repository at commit `b09ef43` (`--repo`, the last commit before those changes, which already holds
+the rerun script's own date handling), with the stock geecs-lume-twin:
+
+```bash
+git -C <this repo> worktree add <old repo> b09ef43
+python htu_twin_apps/lpa_source/provenance/rerun_slit_a_rescore.py <data root> <sample_dataset.json> \
+    <new directory> --repo <old repo>
+```
 
 ## The chain
 

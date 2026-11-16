@@ -4,7 +4,7 @@
 // twin's values at that step, the twin's output beside the measurement, and the values below.
 
 // edits: twin input key -> value, sent with every step (see server.py's docstring)
-const state = { datasets: [], dataset: null, edits: {}, request: 0, selecting: null, source: "fit" };
+const state = { datasets: [], dataset: null, edits: {}, request: 0, selecting: null, source: "" };
 
 const $ = (id) => document.getElementById(id);
 const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -275,12 +275,12 @@ async function init() {
     return;
   }
   state.datasets = v.datasets;
-  $("source").textContent = `Twin: geecs-lume-twin with the line corrections from ${v.source}; the LPA source is chosen below`;
+  $("source").textContent = `Twin: geecs-lume-twin. Choose a fit (its LPA source and line corrections) or an fbpic beam below; an fbpic beam runs with the corrections of ${v.source}`;
   $("dataset").innerHTML = v.datasets
     .map((d) => `<option value="${d.scan}">${d.scan}: ${escapeHtml(d.title)}</option>`)
     .join("");
   $("dataset").addEventListener("change", (e) => selectDataset(e.target.value));
-  // the sources: the fit's, and any fbpic runs; a source edit only applies to the fit's
+  // the sources: the fits, and any fbpic runs; a source edit only applies to a fit's
   $("source-select").innerHTML = v.sources
     .map((s) => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.label)}</option>`)
     .join("");
@@ -317,10 +317,8 @@ async function init() {
   const q = new URLSearchParams(location.search).get("scan");
   const d = v.datasets.find((x) => x.scan === q || x.scan.endsWith(`/${q}`)) || v.datasets[0];
   const src = new URLSearchParams(location.search).get("source");
-  if (src && v.sources.some((x) => x.id === src)) {
-    state.source = src;
-    $("source-select").value = src;
-  }
+  state.source = src && v.sources.some((x) => x.id === src) ? src : v.sources[0].id;
+  $("source-select").value = state.source;
   $("dataset").value = d.scan;
   // the link's step counts from 1; one that is not a number is the first
   selectDataset(d.scan, (parseInt(new URLSearchParams(location.search).get("step"), 10) || 1) - 1);

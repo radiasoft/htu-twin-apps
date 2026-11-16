@@ -182,10 +182,17 @@ run can be followed and its best point recovered if it dies; every tenth is also
       (0.825 T by default; the field was not logged). Only particles within the camera's
       AngleAxis range count, as on the camera (Cam1 +-23.5 mrad, Cam2 -17.5 to 19.75 mrad: the
       screen's height over the total path). Checked: the screen positions match the twin's own
-      `map_to_screens` exactly. The magnet magnifies vertically: 1 mrad at its entrance appears
-      as 6 to 10 mrad on the AngleAxis, 1 mm as 2.4 to 4.4 mrad;
+      `map_to_screens` exactly. HTU's maps begin with a 1.970 m drift ahead of the magnet's
+      entrance (at the highest momentum a map is a 2.684 m drift where the total path is
+      0.715 m), which this projection takes off (`pointing.upstream_drift_m`; the twin's own
+      `map_to_screens` does not). The magnet magnifies vertically: 1 mrad at its
+      entrance appears as 1.5 mrad on the AngleAxis, 1 mm as 2.4 to 4.6 mrad. The driver's
+      AngleAxis has been checked against the raw camera frames (`pointing`'s docstring);
     - `stand-in`: `Y = y + d y'` at the spectrometer entrance, with `d` from 0 to 0.45 m (what
       the fit used before the spectrometer was modelled);
+  - a profile's centroid and rms, measured and predicted, count only its bins above 10% of its
+    peak (`pointing.THRESHOLD`), as the A-line spots do: the measured profiles have broad, flat
+    wings that hide how the core's width changes across a scan;
   - per camera, a scale, a zero and a resolution floor are fitted (both cameras' scales of one
     sign), and the chi^2 that remains is minimized over `pointing_y_mrad`, `divergence_y_mrad`
     and `pmq_y_mm`.
@@ -269,11 +276,9 @@ tracking cost).
 
 ## Vertical pointing fit (2026-10-30)
 
-This fit used the `y + d y'` stand-in projection and hard-edged PMQs, before the spectrometer
-was modelled. Through the spectrometer model, its best point scores chi^2 3,077 (against 725
-through the stand-in), with camera scales of -0.04 and -0.15 rather than the +-1 expected: the
-twin predicts much more variation across the scans' steps than the cameras saw. A fit through
-the spectrometer model is the test of whether any source and offsets match.
+This fit used the `y + d y'` stand-in projection, hard-edged PMQs and whole-profile widths,
+before the spectrometer was modelled; it is kept as a record. Its results below are superseded by
+the A-line and spectrometer fit made together (`aline_vertical`, "Not yet done" below).
 
 From the Scan016-fitted source, with the twin's EMQ polarity; two starts agree:
 
@@ -307,8 +312,10 @@ correlated along a valley.
 
 - Horizontal pointing and the PMQ triplet's horizontal and longitudinal position (`pmq_x_mm`,
   `pmq_z_mm`), which no measurement used here constrains.
-- The vertical plane: the A-line scans need the EMQ fields 0.6 to 0.9 mm off the beam vertically,
-  which the spectrometer scans' vertical profiles do not show, and through the spectrometer
-  model the fitted camera scale is -0.07 to -0.26 where 1 is expected.
+- The vertical plane's spectrometer scale: the A-line scans and the spectrometer's vertical
+  profiles fit together (`aline_vertical`) only with the cameras' scales at about -0.31 where 1
+  is expected (the driver's AngleAxis checked against the raw frames, the magnet's map against a
+  hard-edged dipole). The sign may be the cameras' orientation; the factor of about 3 is not
+  explained. See `twin_viewer/fits/README.md`.
 - Tests: none yet.
 - Shot-to-shot spread: averages are compared, not single shots.

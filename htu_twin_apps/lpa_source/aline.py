@@ -33,6 +33,7 @@ import functools
 import numpy
 import pathlib
 
+from htu_twin_apps import machine_state as htu_machine_state
 from htu_twin_apps.lpa_source import scans as htu_scans
 
 # The scans' background frames.
@@ -206,7 +207,7 @@ def measured(
         )
         e = numpy.maximum(1.2533 * m.std(axis=0) / numpy.sqrt(len(j)), ERROR_FLOOR_PX)
         c = numpy.median(m, axis=0)
-        s = htu_scans.machine_state([rows[r] for r in j])
+        s = htu_machine_state.from_geecs([rows[r] for r in j])
         # POSIT: slit.measured's steps are the partner scan's in step order, at the same currents
         rv.append(
             AlineStep(

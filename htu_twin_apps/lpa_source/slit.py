@@ -25,6 +25,7 @@ import dataclasses
 import numpy
 import pathlib
 
+from htu_twin_apps import machine_state as htu_machine_state
 from htu_twin_apps.lpa_source import scans as htu_scans
 
 CAMERAS = ("Cam1", "Cam2")
@@ -203,7 +204,7 @@ def measured(
             SlitStep(
                 density=d / (d.sum() * compare.ENERGY_STEP_MEV),
                 energy_mev=e.reshape(-1, k).mean(axis=1),
-                machine_state=htu_scans.machine_state([rows[r] for r in j]),
+                machine_state=htu_machine_state.from_geecs([rows[r] for r in j]),
             )
         )
     return rv

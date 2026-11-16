@@ -5,7 +5,19 @@
 DATA is the htu-sample-data directory (holding Undulator/Y2026/09-Sep/26_0929), NERSC_JSON the FBPIC `sample_dataset.json` (the start of step
 1), OUT_DIR where everything is written (use a new directory: the original fits are not touched).
 Run from anywhere; `compare` runs with the repository root as its working directory. The result,
-slit_a_rescore.json, is what `htu_twin_apps/twin_viewer/twin-fit-values.json` was copied from.
+slit_a_rescore.json, is `htu_twin_apps/twin_viewer/fits/aline_slit.json`.
+
+The code version matters. Steps 4 to 6 fit the spectrometer's vertical profiles through this
+repository's spectrometer projection as it was then: the COSY maps applied with their upstream
+drift left in (before `pointing.upstream_drift_m`) and each profile's whole rms (before
+`pointing.THRESHOLD`). Later code changes both, so those steps refuse to run on it. To regenerate
+the chain, run `compare` from a checkout of this repository at commit b09ef43 (`--repo`), e.g.
+
+    git -C <this repo> worktree add <old repo> b09ef43
+    python rerun_slit_a_rescore.py DATA NERSC_JSON OUT_DIR --repo <old repo>
+
+Step 1 runs in this process, with this repository (it fits Scan016's spectrum only, which neither
+change touches).
 
 Each step skips itself if its output already exists in OUT_DIR, so an interrupted run resumes.
 Each `compare` run's printed output goes to OUT_DIR/<name>.out, and every evaluation to
@@ -72,12 +84,21 @@ SCAN016_KNOBS = (
     "energy_mev,energy_sigma_mev,energy_tail_mev,divergence_x_mrad,divergence_y_mrad,"
     "divergence_power"
 )
-SLIT_KEYS = ("chicane_jaw1_mm", "chicane_jaw2_mm", "slit_blade_low_mm", "slit_blade_high_mm")
+# the steps that fit through the twin's spectrometer model (see the module's docstring)
+SPECTROMETER_STEPS = {4, 5, 6}
+SLIT_KEYS = (
+    "chicane_jaw1_mm",
+    "chicane_jaw2_mm",
+    "slit_blade_low_mm",
+    "slit_blade_high_mm",
+)
 
 
 def main():
     a = _args()
     a.out.mkdir(parents=True, exist_ok=True)
+    if a.steps & SPECTROMETER_STEPS:
+        _check_code(a)
     for n, f in _steps():
         if n in a.steps:
             print(f"== step {n}: {f.__name__[6:]}", flush=True)
@@ -85,7 +106,9 @@ def main():
 
 
 def _args():
-    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
+    p = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawTextHelpFormatter
+    )
     p.add_argument("data", type=pathlib.Path)
     p.add_argument("nersc", type=pathlib.Path)
     p.add_argument("out", type=pathlib.Path)
@@ -108,12 +131,41 @@ def _best_values(log):
     return min(r, key=lambda x: x["value"])["values"]
 
 
+def _check_code(a):
+    """Fail unless `compare` would run with the spectrometer model the chain was made with."""
+    p = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "from htu_twin_apps.lpa_source import pointing as p; "
+            + "print(hasattr(p, 'upstream_drift_m'), hasattr(p, 'THRESHOLD'))",
+        ],
+        cwd=a.repo,
+        capture_output=True,
+        text=True,
+    )
+    if p.returncode:
+        raise SystemExit(f"cannot import {a.repo}'s pointing: {p.stderr}")
+    if p.stdout.split()[-2:] != ["False", "False"]:
+        raise SystemExit(
+            "steps 4 to 6 need the spectrometer model of 2026-11-03 (drift left in, whole-profile "
+            + "rms); give --repo as the module's docstring says"
+        )
+
+
 def _compare(a, name, *args):
     """Run `compare` on the data with `args`, logging to <name>.log and <name>.out."""
     o = a.out / f"{name}.out"
     with open(o, "w") as f:
         p = subprocess.Popen(
-            [sys.executable, "-u", "-m", "htu_twin_apps.lpa_source.compare", str(a.data), *args],
+            [
+                sys.executable,
+                "-u",
+                "-m",
+                "htu_twin_apps.lpa_source.compare",
+                str(a.data),
+                *args,
+            ],
             cwd=a.repo,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
@@ -136,7 +188,8 @@ def _done(*paths):
 
 def _fit(a, name, source, *args):
     """A fit that logs, saves its source and plots; the source is rebuilt from the log's best
-    line if the run ended without saving one (the original runs crashed before saving)."""
+    line if the run ended without saving one (the original runs crashed before saving).
+    """
     s = a.out / f"{name}_source.json"
     if _done(s):
         return
@@ -157,7 +210,10 @@ def _fit(a, name, source, *args):
     except RuntimeError:
         if not (a.out / f"{name}.log").exists():
             raise
-        print(f"   {name} died; rebuilding {s.name} from the best line of its log", flush=True)
+        print(
+            f"   {name} died; rebuilding {s.name} from the best line of its log",
+            flush=True,
+        )
     if not s.exists():
         _from_log(source, a.out / f"{name}.log", s)
 
@@ -251,7 +307,8 @@ def _step_01_scan016_hard_edge(a):
         o,
         "energy + divergence",
         source.from_nersc(a.nersc, "sim_0003", num_particles=50_000),
-        SCAN016_ENERGY_KNOBS + ["divergence_x_mrad", "divergence_y_mrad", "divergence_power"],
+        SCAN016_ENERGY_KNOBS
+        + ["divergence_x_mrad", "divergence_y_mrad", "divergence_power"],
     )
     for k in (0.5, 1.5):
         s = dataclasses.replace(
@@ -266,7 +323,9 @@ def _step_02_wrap(a):
     o = a.out / "scan016_source.json"
     if _done(o):
         return
-    d = json.loads((a.out / "fit_scan016_b.json").read_text())["energy + divergence"]["source"]
+    d = json.loads((a.out / "fit_scan016_b.json").read_text())["energy + divergence"][
+        "source"
+    ]
     o.write_text(json.dumps({"source": d, "machine_state": {}}, indent=1))
 
 
@@ -349,7 +408,9 @@ def _step_09_aline_start(a):
     }
     ms = {k: x for k, x in v["machine_state"].items() if k != "magspec_b"}
     ms.update({k: h["machine_state"][k] for k in SLIT_KEYS})
-    o.write_text(json.dumps({"source": src, "machine_state": {**ms, "s1h_scale": 1.0}}, indent=1))
+    o.write_text(
+        json.dumps({"source": src, "machine_state": {**ms, "s1h_scale": 1.0}}, indent=1)
+    )
 
 
 def _step_10_aline_plus(a):
@@ -450,13 +511,17 @@ def _step_17_rescore_source(a):
         return
     j = json.loads((a.out / "aline_axis_source.json").read_text())
     k = json.loads((a.out / "slit_a_source.json").read_text())["machine_state"]
-    j["machine_state"].update({x: v for x, v in k.items() if "jaw" in x or "blade" in x})
+    j["machine_state"].update(
+        {x: v for x, v in k.items() if "jaw" in x or "blade" in x}
+    )
     o.write_text(json.dumps(j, indent=1))
 
 
 def _steps():
     g = globals()
-    return [(int(k[6:8]), g[k]) for k in sorted(g) if re.fullmatch(r"_step_\d\d_\w+", k)]
+    return [
+        (int(k[6:8]), g[k]) for k in sorted(g) if re.fullmatch(r"_step_\d\d_\w+", k)
+    ]
 
 
 if __name__ == "__main__":
