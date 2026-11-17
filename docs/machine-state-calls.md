@@ -4,46 +4,10 @@ Where `htu_twin_apps.machine_state` is called, from a recorded scan's rows to th
 The keys themselves, with their GEECS columns and PV names, are in
 [`htu-pv-translation.md`](htu-pv-translation.md).
 
-```mermaid
-flowchart LR
-    rows["GEECS scan table<br/>a row per shot,<br/>read by scans.table"]
-    pvs["EPICS PVs<br/>HTU:SIM:* or the<br/>GEECS gateway's"]
+[![Where the apps call machine_state](machine-state-calls.svg)](machine-state-calls.svg)
 
-    subgraph ms["machine_state.py"]
-        from_geecs["from_geecs(rows)"]
-        keys["KEYS<br/>28 settings, 27 corrections"]
-        emq["EMQ"]
-        pv_name["pv_name(key)"]
-        to_twin["to_twin(settings, corrections)"]
-    end
-
-    server["twin_viewer/server.py<br/>_load, _scanned"]
-    measured["lpa_source *.measured()<br/>aline, slit, pointing, energy_profiles<br/>Step.machine_state"]
-    pointing["pointing.py<br/>EMQ sign, scanned channel"]
-    pv_access["pv_access.py<br/>Live, archive()"]
-
-    fits["twin_viewer/fits/*.json<br/>machine_state: corrections"]
-    edits["viewer edits<br/>STEP_KNOBS, MACHINE_KNOBS"]
-    merge["dict merge<br/>{**step.machine_state,<br/>**step_state, **corrections}"]
-    twin["twin.to_spectrometer<br/>aline.render"]
-    htu["htu.model._apply_machine_state<br/>the Cheetah line"]
-
-    rows -- rows --> from_geecs
-    from_geecs -- settings --> server
-    from_geecs -- settings --> measured
-    emq --> pointing
-    server --> merge
-    measured --> merge
-    fits --> merge
-    edits --> merge
-    merge --> twin --> htu
-
-    keys -.-> pv_access
-    pv_name -. names= .-> pv_access
-    pv_access -. get / monitor .-> pvs
-```
-
-Solid arrows are the apps' path; dotted ones are used only by the tests.
+Solid arrows are the apps' path; dashed ones are used only by the tests. Click the image for
+its full size.
 
 - **`from_geecs()`** is the entry point. Each `measured()` in `lpa_source` (`aline`, `slit`,
   `pointing`, `energy_profiles`) calls it once per scan step, and the twin viewer calls it for

@@ -1,0 +1,149 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1185 640" width="1185" height="640">
+<style>
+text{font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;font-size:12px;fill:#5b6675}
+.t{font-family:"DejaVu Sans Mono",Menlo,Consolas,monospace;font-size:13px;font-weight:600;fill:#1b2430}
+.m{font-family:"DejaVu Sans Mono",Menlo,Consolas,monospace;font-size:11.5px;fill:#5b6675}
+.h{font-size:11px;letter-spacing:.08em;fill:#5b6675}
+.box{fill:#ffffff;stroke:#7a8796;stroke-width:1.2}
+.mod{fill:#e3f0f5;stroke:#1f6f8b;stroke-width:1.5}
+.fn{fill:#ffffff;stroke:#1f6f8b;stroke-width:1.2}
+.dbox{fill:#ffffff;stroke:#a35d2a;stroke-width:1.2;stroke-dasharray:5 4}
+.modt{font-family:"DejaVu Sans Mono",Menlo,Consolas,monospace;font-size:13px;font-weight:600;fill:#1f6f8b}
+.a{fill:none;stroke:#7a8796;stroke-width:1.6}
+.ad{fill:none;stroke:#a35d2a;stroke-width:1.6;stroke-dasharray:5 4}
+.lbl{font-size:11px;fill:#1b2430}
+.head{fill:#7a8796}.headd{fill:#a35d2a}
+</style>
+<rect width="1185" height="640" fill="#ffffff"/>
+    <defs>
+      <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="head" d="M0,0L10,5L0,10z"/></marker>
+      <marker id="ahd" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="headd" d="M0,0L10,5L0,10z"/></marker>
+    </defs>
+
+    <!-- column headings -->
+    <text class="h" x="20" y="22">RECORDED / LIVE DATA</text>
+    <text class="h" x="630" y="22">CALLERS</text>
+    <text class="h" x="920" y="22">MERGE AND SIMULATE</text>
+
+    <!-- A: data -->
+    <rect class="box" x="20" y="70" width="210" height="100" rx="4"/>
+    <text class="t" x="32" y="94">GEECS scan table</text>
+    <text x="32" y="114">ScanNNN.txt, a row per shot</text>
+    <text x="32" y="132"><tspan class="m">Device Variable</tspan> columns,</text>
+    <text x="32" y="150">read by <tspan class="m">scans.table</tspan></text>
+
+    <rect class="dbox" x="20" y="420" width="210" height="90" rx="4"/>
+    <text class="t" x="32" y="444">EPICS PVs</text>
+    <text class="m" x="32" y="464">HTU:SIM:EMQ1H_Current</text>
+    <text x="32" y="482">(twin server), or the GEECS</text>
+    <text x="32" y="500">gateway's <tspan class="m">undulator:…</tspan></text>
+
+    <!-- B: module -->
+    <rect class="mod" x="270" y="30" width="300" height="565" rx="6"/>
+    <text class="modt" x="286" y="54">machine_state.py</text>
+
+    <rect class="fn" x="290" y="70" width="260" height="100" rx="4"/>
+    <text class="t" x="302" y="94">from_geecs(rows)</text>
+    <text x="302" y="114">a step's settings: each logged</text>
+    <text x="302" y="132">setting's median over its shots,</text>
+    <text x="302" y="150">nominal EMQ current if unlogged</text>
+
+    <rect class="fn" x="290" y="190" width="260" height="100" rx="4"/>
+    <text class="t" x="302" y="214">KEYS</text>
+    <text x="302" y="234">28 settings (currents, logged)</text>
+    <text x="302" y="252">27 corrections (fitted)</text>
+    <text class="m" x="302" y="272">Key(kind, unit, geecs, nominal)</text>
+
+    <rect class="fn" x="290" y="310" width="260" height="60" rx="4"/>
+    <text class="t" x="302" y="334">EMQ</text>
+    <text class="m" x="302" y="354">("EMQ1H", "EMQ2V", "EMQ3H")</text>
+
+    <rect class="fn" x="290" y="420" width="260" height="70" rx="4"/>
+    <text class="t" x="302" y="444">pv_name(key)</text>
+    <text x="302" y="464">setting → GEECS gateway name</text>
+    <text class="m" x="302" y="480">undulator:u_s1h:current</text>
+
+    <rect class="dbox" x="290" y="510" width="260" height="70" rx="4"/>
+    <text class="t" x="302" y="534">to_twin(settings, corrections)</text>
+    <text x="302" y="554">checks kinds, then merges;</text>
+    <text x="302" y="571">the apps merge without it</text>
+
+    <!-- C: callers -->
+    <rect class="box" x="630" y="40" width="230" height="85" rx="4"/>
+    <text class="t" x="642" y="64">twin_viewer/server.py</text>
+    <text x="642" y="84"><tspan class="m">_load</tspan>: Scan016's state</text>
+    <text x="642" y="102"><tspan class="m">_scanned</tspan>: which setting</text>
+    <text x="642" y="118">a scan steps</text>
+
+    <rect class="box" x="630" y="145" width="230" height="100" rx="4"/>
+    <text class="t" x="642" y="169">lpa_source *.measured()</text>
+    <text x="642" y="189">aline, slit, pointing,</text>
+    <text x="642" y="207">energy_profiles: one Step</text>
+    <text x="642" y="225">per scan step, with</text>
+    <text class="m" x="642" y="240">Step.machine_state</text>
+
+    <rect class="box" x="630" y="310" width="230" height="60" rx="4"/>
+    <text class="t" x="642" y="334">pointing.py</text>
+    <text x="642" y="354">EMQ sign flip, scanned channel</text>
+
+    <rect class="dbox" x="630" y="420" width="230" height="90" rx="4"/>
+    <text class="t" x="642" y="444">pv_access.py</text>
+    <text x="642" y="464"><tspan class="m">Live</tspan>: key must be a setting</text>
+    <text x="642" y="482"><tspan class="m">archive()</tspan>: each setting's</text>
+    <text x="642" y="500">column, per shot</text>
+
+    <!-- D: merge & simulate -->
+    <rect class="box" x="920" y="40" width="240" height="70" rx="4"/>
+    <text class="t" x="932" y="64">twin_viewer/fits/*.json</text>
+    <text x="932" y="84"><tspan class="m">"machine_state"</tspan>: the</text>
+    <text x="932" y="101">fitted corrections</text>
+
+    <rect class="box" x="920" y="128" width="240" height="60" rx="4"/>
+    <text class="t" x="932" y="152">viewer edits</text>
+    <text class="m" x="932" y="172">STEP_KNOBS, MACHINE_KNOBS</text>
+
+    <rect class="box" x="920" y="215" width="240" height="95" rx="4" style="stroke:#1f6f8b"/>
+    <text class="t" x="932" y="239">dict merge</text>
+    <text class="m" x="932" y="259">{**step.machine_state,</text>
+    <text class="m" x="932" y="275"> **step_state, **corrections}</text>
+    <text x="932" y="297">server._simulate, slit, aline, joint</text>
+
+    <rect class="box" x="920" y="340" width="240" height="75" rx="4"/>
+    <text class="t" x="932" y="364">twin.to_spectrometer</text>
+    <text class="t" x="932" y="382">aline.render</text>
+    <text x="932" y="402">scales → currents, offsets</text>
+
+    <rect class="box" x="920" y="445" width="240" height="70" rx="4"/>
+    <text class="t" x="932" y="469">htu.model</text>
+    <text class="t" x="932" y="487">._apply_machine_state</text>
+    <text x="932" y="505">sets the Cheetah line</text>
+
+    <!-- arrows: app path -->
+    <path class="a" d="M230,120H288" marker-end="url(#ah)"/>
+    <text class="lbl" x="236" y="112">rows</text>
+
+    <path class="a" d="M550,100C590,100 590,80 628,80" marker-end="url(#ah)"/>
+    <path class="a" d="M550,140C590,140 590,190 628,190" marker-end="url(#ah)"/>
+    <text class="lbl" x="575" y="125">settings</text>
+
+    <path class="a" d="M860,80H884V240H918" marker-end="url(#ah)"/>
+    <path class="a" d="M860,200H898V280H918" marker-end="url(#ah)"/>
+
+    <path class="a" d="M1160,75H1174V262H1162" marker-end="url(#ah)"/>
+    <path class="a" d="M1040,188V213" marker-end="url(#ah)"/>
+    <path class="a" d="M1040,310V338" marker-end="url(#ah)"/>
+    <path class="a" d="M1040,415V443" marker-end="url(#ah)"/>
+
+    <path class="a" d="M550,340H628" marker-end="url(#ah)"/>
+
+    <!-- arrows: tests only -->
+    <path class="ad" d="M550,260H596V440H628" marker-end="url(#ahd)"/>
+    <text class="lbl" x="556" y="252">KEYS</text>
+    <path class="ad" d="M550,470C590,470 590,490 628,490" marker-end="url(#ahd)"/>
+    <text class="lbl" x="562" y="500">names=</text>
+    <path class="ad" d="M745,510V615H125V512" marker-end="url(#ahd)"/>
+    <text class="lbl" x="380" y="610">get / monitor over PV Access (p4p)</text>
+  
+    <path class="a" d="M920,560H960"/><text x="968" y="564">called by the apps</text>
+    <path class="ad" d="M920,585H960"/><text x="968" y="589">tests only</text>
+</svg>
