@@ -168,7 +168,8 @@ run can be followed and its best point recovered if it dies; every tenth is also
   an apparent angle in mrad, through the magnet's vertical optics. In the scans that step one EMQ
   while the spectrometer records (Scans 025, 028 and 030), the profiles' centroids and widths move
   with the EMQ current, which depends on where the beam is in the EMQs. For every step and camera:
-  - each step's twin machine state is read from the scan table (EMQ setpoints, chicane, steerers);
+  - each step's twin machine state is read from the scan table (EMQ setpoints, chicane, steerers;
+    see [`docs/machine-state-calls.md`](../../docs/machine-state-calls.md));
     only the scanned EMQ channel is logged, so the others are taken at their nominal 1.5 / -0.82 /
     0 A;
   - the source is tracked with the slit's jaws out and reweighted, in 2 MeV bins, to the step's

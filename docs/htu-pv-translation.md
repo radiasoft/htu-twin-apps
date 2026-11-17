@@ -27,7 +27,8 @@ twin's names are the ones to map or change, not the GEECS ones.
 `htu_twin_apps.machine_state.KEYS` names every value of the transport line's machine state. A
 **setting** is logged by GEECS for each shot; `from_geecs()` reads a scan step's settings, and
 `htu_twin_apps.pv_access` reads them live over PV Access (`Live`) or from a scan folder
-(`archive()`). The table below is the code's (`tests/docs_test.py` checks that they agree):
+(`archive()`). [`machine-state-calls.md`](machine-state-calls.md) shows where the apps call it.
+The table below is the code's (`tests/docs_test.py` checks that they agree):
 
 | Key | GEECS scan-table column | EPICS name (`pv_name`) | Twin PV (`twin_name`) | Unit | Nominal |
 |---|---|---|---|---|---|

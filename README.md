@@ -19,6 +19,8 @@ is a subpackage of `htu_twin_apps` with its own README and console script; they 
 
 [`docs/htu-pv-translation.md`](docs/htu-pv-translation.md) maps the names of the twin's PVs, GEECS's
 devices and the machine state, and records what is known of their calibrations.
+[`docs/machine-state-calls.md`](docs/machine-state-calls.md) shows where the apps call the machine
+state, from a scan's rows to the twin's line.
 [`docs/htu-twin-questions.md`](docs/htu-twin-questions.md) is the short list for the GEECS team: a
 bug in the twin's spectrometer model and the questions we most need answered, with the rest in
 [`docs/htu-twin-other-questions.md`](docs/htu-twin-other-questions.md).

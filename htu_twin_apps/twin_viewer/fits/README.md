@@ -5,7 +5,8 @@ Each file here is a fit of the HTU twin to the recorded 2026-09-29 scans: the LP
 (`machine_state`: magnet scales and offsets, the slit's jaws and blade, the A-line camera's pixel
 size), and, if the fit measured them, the spectrometer cameras' calibration (`spectrometer`:
 Cam1's and Cam2's scale, zero and floor of the AngleAxis). A file is named by what its values were
-matched to.
+matched to. How the corrections join a scan step's settings is in
+[`docs/machine-state-calls.md`](../../../docs/machine-state-calls.md).
 
 | File | Matched to | Default |
 |---|---|---|
